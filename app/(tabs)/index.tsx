@@ -1,21 +1,34 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 
 export default function HomeScreen() {
- return (
-   <View style={styles.container}>
-     <Text style={styles.text}>안녕하세요</Text>
-   </View>
- );
+  return (
+    <View style={styles.container}>
+      <MapView
+        style={styles.map}
+        provider={PROVIDER_GOOGLE}
+        initialRegion={{
+          latitude: 37.5665,
+          longitude: 126.9780,
+          latitudeDelta: 0.0922,
+          longitudeDelta: 0.0421,
+        }}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
+        showsCompass={true}
+        zoomEnabled={true}
+        zoomControlEnabled={true}
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
- container: {
-   flex: 1,
-   justifyContent: 'center',
-   alignItems: 'center',
- },
- text: {
-   fontSize: 24,
-   fontWeight: 'bold',
- },
+  container: {
+    flex: 1,
+  },
+  map: {
+    width: '100%',
+    height: '100%',
+  },
 });
