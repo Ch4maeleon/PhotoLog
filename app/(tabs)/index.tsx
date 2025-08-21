@@ -1,47 +1,54 @@
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-
-let MapView: any = null;
-let PROVIDER_GOOGLE: any = null;
+import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 
 export default function HomeScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
 
   useEffect(() => {
     (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        return;
-      }
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('Permission to access location was denied');
+          return;
+        }
 
-      let location = await Location.getCurrentPositionAsync({});
-      setLocation(location);
+        let location = await Location.getCurrentPositionAsync({});
+        setLocation(location);
+      } catch (error) {
+        console.error('Error getting location:', error);
+      }
     })();
   }, []);
+
+  const defaultRegion = {
+    latitude: 37.5665,
+    longitude: 126.9780,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  };
+
+  const currentRegion = location ? {
+    latitude: location.coords.latitude,
+    longitude: location.coords.longitude,
+    latitudeDelta: 0.01,
+    longitudeDelta: 0.01,
+  } : defaultRegion;
 
   return (
     <View style={styles.container}>
       <MapView
         style={styles.map}
         provider={PROVIDER_GOOGLE}
-        region={location ? {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        } : {
-          latitude: 37.5665,
-          longitude: 126.9780,
-          latitudeDelta: 0.0922,
-          longitudeDelta: 0.0421,
-        }}
+        region={currentRegion}
         showsUserLocation={true}
         showsMyLocationButton={true}
         showsCompass={true}
         zoomEnabled={true}
         zoomControlEnabled={true}
-        followsUserLocation={true}
+        followsUserLocation={location !== null}
       />
     </View>
   );
