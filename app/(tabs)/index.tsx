@@ -15,6 +15,16 @@ interface TempMarker {
   title?: string;
   description?: string;
   images?: string[];
+  category?: string;
+  bestTime?: string[];
+  difficulty?: number;
+  gpsMetadata?: {
+    altitude?: number;
+    accuracy?: number;
+    heading?: number;
+    speed?: number;
+    timestamp?: string;
+  };
 }
 
 export default function HomeScreen() {
@@ -27,13 +37,24 @@ export default function HomeScreen() {
   const [markerTitle, setMarkerTitle] = useState('');
   const [markerDescription, setMarkerDescription] = useState('');
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedTimes, setSelectedTimes] = useState<string[]>([]);
+  const [selectedDifficulty, setSelectedDifficulty] = useState(1);
   const [isEditingMarker, setIsEditingMarker] = useState(false);
+  const [isDraggingMarker, setIsDraggingMarker] = useState(false);
+  const [draggedMarkerId, setDraggedMarkerId] = useState<string | null>(null);
+  const [originalMarkerPosition, setOriginalMarkerPosition] = useState<{latitude: number, longitude: number} | null>(null);
+  const [isMarkerInDeleteZone, setIsMarkerInDeleteZone] = useState(false);
   const [mapRegion, setMapRegion] = useState(currentRegion);
   const tabBarHeight = useBottomTabBarHeight();
   
   const bottomSheetRef = useRef<BottomSheet>(null);
   const mapRef = useRef<MapView>(null);
-  const snapPoints = useMemo(() => ['25%', '50%', '75%'], []);
+  const snapPoints = useMemo(() => ['75%'], []);
+
+  const categories = ['풍경', '야경', '일출/일몰', '인물', '거리', '건축', '자연', '도시', '기타'];
+  const timeOptions = ['새벽', '아침', '낮', '황금시간', '저녁', '밤'];
+  const difficultyLabels = ['매우 쉬움', '쉬움', '보통', '어려움', '매우 어려움'];
 
   useEffect(() => {
     (async () => {
@@ -114,6 +135,9 @@ export default function HomeScreen() {
     setMarkerTitle('');
     setMarkerDescription('');
     setSelectedImages([]);
+    setSelectedCategory('');
+    setSelectedTimes([]);
+    setSelectedDifficulty(1);
     
     const latitudeDelta = 0.01;
     const adjustedLatitude = coordinate.latitude - (latitudeDelta * 0.5);
@@ -126,7 +150,7 @@ export default function HomeScreen() {
     }, 800);
     
     setTimeout(() => {
-      bottomSheetRef.current?.expand();
+      bottomSheetRef.current?.snapToIndex(0);
     }, 300);
   };
 
@@ -134,7 +158,7 @@ export default function HomeScreen() {
     setSelectedMarker(marker);
     setIsAddingMarker(false);
     setIsEditingMarker(false);
-    bottomSheetRef.current?.expand();
+    bottomSheetRef.current?.snapToIndex(0);
   }, []);
 
   const handleClusterPress = useCallback((cluster: any) => {
@@ -150,6 +174,27 @@ export default function HomeScreen() {
 
   const onRegionChangeComplete = useCallback((region: any) => {
     setMapRegion(region);
+  }, []);
+
+  const getCurrentGPSMetadata = useCallback(async () => {
+    try {
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      
+      return {
+        altitude: currentLocation.coords.altitude || undefined,
+        accuracy: currentLocation.coords.accuracy || undefined,
+        heading: currentLocation.coords.heading || undefined,
+        speed: currentLocation.coords.speed || undefined,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.warn('GPS 메타데이터 수집 실패:', error);
+      return {
+        timestamp: new Date().toISOString(),
+      };
+    }
   }, []);
 
   const handleMarkerDragEnd = useCallback((markerKey: string, event: any) => {
@@ -183,31 +228,45 @@ export default function HomeScreen() {
     }
   }, [isAddingMarker, isEditingMarker]);
 
-  const handleSaveMarker = useCallback(() => {
-    if (!pendingCoordinate) return;
-    
-    if (!markerTitle.trim()) {
-      Alert.alert('알림', '제목을 입력해주세요.');
-      return;
+  const handleSaveMarker = useCallback(async () => {
+    try {
+      if (!pendingCoordinate) return;
+      
+      if (!markerTitle.trim()) {
+        Alert.alert('알림', '제목을 입력해주세요.');
+        return;
+      }
+
+      const gpsMetadata = await getCurrentGPSMetadata();
+
+      const newMarker: TempMarker = {
+        latitude: pendingCoordinate.latitude,
+        longitude: pendingCoordinate.longitude,
+        key: `marker_${Date.now()}`,
+        title: markerTitle.trim(),
+        description: markerDescription.trim(),
+        images: selectedImages.length > 0 ? [...selectedImages] : undefined,
+        category: selectedCategory || undefined,
+        bestTime: selectedTimes.length > 0 ? [...selectedTimes] : undefined,
+        difficulty: selectedDifficulty,
+        gpsMetadata,
+      };
+
+      setMarkers(prev => [...prev, newMarker]);
+      setIsAddingMarker(false);
+      setPendingCoordinate(null);
+      setMarkerTitle('');
+      setMarkerDescription('');
+      setSelectedImages([]);
+      setSelectedCategory('');
+      setSelectedTimes([]);
+      setSelectedDifficulty(1);
+      bottomSheetRef.current?.close();
+    } catch (error) {
+      console.error('마커 저장 중 오류:', error);
+      Alert.alert('오류', '마커 저장 중 문제가 발생했습니다.');
     }
-
-    const newMarker: TempMarker = {
-      latitude: pendingCoordinate.latitude,
-      longitude: pendingCoordinate.longitude,
-      key: `marker_${Date.now()}`,
-      title: markerTitle.trim(),
-      description: markerDescription.trim(),
-      images: selectedImages.length > 0 ? [...selectedImages] : undefined,
-    };
-
-    setMarkers(prev => [...prev, newMarker]);
-    setIsAddingMarker(false);
-    setPendingCoordinate(null);
-    setMarkerTitle('');
-    setMarkerDescription('');
-    setSelectedImages([]);
-    bottomSheetRef.current?.close();
-  }, [pendingCoordinate, markerTitle, markerDescription, selectedImages]);
+  }, [pendingCoordinate, markerTitle, markerDescription, selectedImages, selectedCategory, selectedTimes, selectedDifficulty, getCurrentGPSMetadata]);
 
   const handleCancelAddMarker = useCallback(() => {
     setIsAddingMarker(false);
@@ -215,6 +274,9 @@ export default function HomeScreen() {
     setMarkerTitle('');
     setMarkerDescription('');
     setSelectedImages([]);
+    setSelectedCategory('');
+    setSelectedTimes([]);
+    setSelectedDifficulty(1);
     bottomSheetRef.current?.close();
   }, []);
 
@@ -292,6 +354,9 @@ export default function HomeScreen() {
     setMarkerTitle(selectedMarker.title || '');
     setMarkerDescription(selectedMarker.description || '');
     setSelectedImages(selectedMarker.images || []);
+    setSelectedCategory(selectedMarker.category || '');
+    setSelectedTimes(selectedMarker.bestTime || []);
+    setSelectedDifficulty(selectedMarker.difficulty || 1);
   }, [selectedMarker]);
 
   const handleCancelEditMarker = useCallback(() => {
@@ -299,6 +364,9 @@ export default function HomeScreen() {
     setMarkerTitle('');
     setMarkerDescription('');
     setSelectedImages([]);
+    setSelectedCategory('');
+    setSelectedTimes([]);
+    setSelectedDifficulty(1);
   }, []);
 
   const handleUpdateMarker = useCallback(() => {
@@ -314,6 +382,9 @@ export default function HomeScreen() {
       title: markerTitle.trim(),
       description: markerDescription.trim(),
       images: selectedImages.length > 0 ? [...selectedImages] : undefined,
+      category: selectedCategory || undefined,
+      bestTime: selectedTimes.length > 0 ? [...selectedTimes] : undefined,
+      difficulty: selectedDifficulty,
     };
 
     setMarkers(prev => 
@@ -327,8 +398,19 @@ export default function HomeScreen() {
     setMarkerTitle('');
     setMarkerDescription('');
     setSelectedImages([]);
-    bottomSheetRef.current?.snapToIndex(1);
-  }, [selectedMarker, markerTitle, markerDescription, selectedImages]);
+    setSelectedCategory('');
+    setSelectedTimes([]);
+    setSelectedDifficulty(1);
+    bottomSheetRef.current?.snapToIndex(0);
+  }, [selectedMarker, markerTitle, markerDescription, selectedImages, selectedCategory, selectedTimes, selectedDifficulty]);
+
+  const handleDeleteMarker = useCallback((markerId: string) => {
+    setMarkers(prev => prev.filter(marker => marker.key !== markerId));
+    setIsDraggingMarker(false);
+    setDraggedMarkerId(null);
+    setSelectedMarker(null);
+    bottomSheetRef.current?.close();
+  }, []);
 
   return (
     <GestureHandlerRootView style={styles.container}>
@@ -342,6 +424,16 @@ export default function HomeScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+      
+      {isEditMode && isDraggingMarker && (
+        <View style={styles.deleteZone}>
+          <View style={styles.deleteZoneInner}>
+            <Text style={styles.deleteZoneIcon}>✕</Text>
+          </View>
+          <Text style={styles.deleteZoneText}>삭제</Text>
+        </View>
+      )}
+      
       <MapView
         ref={mapRef}
         style={[styles.map, { marginBottom: tabBarHeight }]}
@@ -378,14 +470,88 @@ export default function HomeScreen() {
             const originalMarker = markers.find(m => m.key === item.properties.markerId);
             if (!originalMarker) return null;
             
+            // 일반적인 좌표 사용 (드래그 중에도 실제 마커 데이터 기준)
+            
             return (
               <Marker
                 key={originalMarker.key}
                 coordinate={{ latitude, longitude }}
                 draggable={isEditMode}
-                onDragEnd={(event) => handleMarkerDragEnd(originalMarker.key, event)}
+                onDragStart={() => {
+                  if (isEditMode) {
+                    setOriginalMarkerPosition({
+                      latitude: originalMarker.latitude,
+                      longitude: originalMarker.longitude
+                    });
+                    setIsDraggingMarker(true);
+                    setDraggedMarkerId(originalMarker.key);
+                    setIsMarkerInDeleteZone(false);
+                  }
+                }}
+                onDragEnd={(event) => {
+                  const { coordinate } = event.nativeEvent;
+                  
+                  // 드래그 종료 시 삭제 영역 체크
+                  const mapTop = mapRegion.latitude + (mapRegion.latitudeDelta / 2);
+                  const deleteZoneCenter = {
+                    latitude: mapTop - (mapRegion.latitudeDelta * 0.15),
+                    longitude: mapRegion.longitude
+                  };
+                  
+                  const distance = Math.sqrt(
+                    Math.pow(coordinate.latitude - deleteZoneCenter.latitude, 2) +
+                    Math.pow(coordinate.longitude - deleteZoneCenter.longitude, 2)
+                  );
+                  
+                  const deleteRadius = mapRegion.latitudeDelta * 0.12;
+                  const inDeleteZone = distance <= deleteRadius;
+                  
+                  if (inDeleteZone && isEditMode && isDraggingMarker) {
+                    // 삭제 영역에서 종료 - 즉시 원래 위치로 복원하고 다이얼로그 표시
+                    setMarkers(prev => 
+                      prev.map(marker => 
+                        marker.key === originalMarker.key 
+                          ? { ...marker, latitude: originalMarkerPosition!.latitude, longitude: originalMarkerPosition!.longitude }
+                          : marker
+                      )
+                    );
+                    
+                    Alert.alert(
+                      '마커 삭제',
+                      '이 마커를 삭제하시겠습니까?',
+                      [
+                        { 
+                          text: '취소', 
+                          style: 'cancel',
+                          onPress: () => {
+                            // 취소 시 상태만 초기화
+                            setIsDraggingMarker(false);
+                            setDraggedMarkerId(null);
+                            setOriginalMarkerPosition(null);
+                            setIsMarkerInDeleteZone(false);
+                          }
+                        },
+                        { text: '삭제', style: 'destructive', onPress: () => handleDeleteMarker(originalMarker.key) }
+                      ]
+                    );
+                  } else {
+                    // 일반적인 위치 이동
+                    setMarkers(prev => 
+                      prev.map(marker => 
+                        marker.key === originalMarker.key 
+                          ? { ...marker, latitude: coordinate.latitude, longitude: coordinate.longitude }
+                          : marker
+                      )
+                    );
+                  }
+                  
+                  setIsDraggingMarker(false);
+                  setDraggedMarkerId(null);
+                  setOriginalMarkerPosition(null);
+                  setIsMarkerInDeleteZone(false);
+                }}
                 onPress={() => handleMarkerPress(originalMarker)}
-                pinColor={isEditMode ? "orange" : "red"}
+                pinColor={isEditMode ? (draggedMarkerId === originalMarker.key ? "red" : "orange") : "red"}
               />
             );
           }
@@ -405,20 +571,18 @@ export default function HomeScreen() {
         snapPoints={snapPoints}
         onChange={handleSheetChanges}
         enablePanDownToClose={true}
+        enableDynamicSizing={false}
+        maxDynamicContentSize={0.75}
       >
         <BottomSheetView style={styles.contentContainer}>
-          <View style={styles.sheetContent}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.keyboardAvoidingView}
-            >
-              <ScrollView 
-                style={styles.scrollView}
-                contentContainerStyle={styles.scrollViewContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                onScrollBeginDrag={() => Keyboard.dismiss()}
-              >
+          <ScrollView 
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollViewContent}
+            showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled={true}
+          >
+            <View style={styles.sheetContent}>
               {isAddingMarker ? (
                 <>
                   <Text style={styles.title}>새 출사 스팟 추가</Text>
@@ -429,9 +593,7 @@ export default function HomeScreen() {
                       value={markerTitle}
                       onChangeText={setMarkerTitle}
                       placeholder="스팟 이름을 입력하세요"
-                      autoFocus={true}
                       returnKeyType="next"
-                      blurOnSubmit={false}
                       onSubmitEditing={() => Keyboard.dismiss()}
                     />
                   </View>
@@ -448,6 +610,60 @@ export default function HomeScreen() {
                       returnKeyType="done"
                       onSubmitEditing={() => Keyboard.dismiss()}
                     />
+                  </View>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>카테고리</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {categories.map((category) => (
+                        <TouchableOpacity
+                          key={category}
+                          style={[styles.categoryButton, selectedCategory === category && styles.categoryButtonSelected]}
+                          onPress={() => setSelectedCategory(selectedCategory === category ? '' : category)}
+                        >
+                          <Text style={[styles.categoryButtonText, selectedCategory === category && styles.categoryButtonTextSelected]}>
+                            {category}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>최적 촬영 시간</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {timeOptions.map((time) => (
+                        <TouchableOpacity
+                          key={time}
+                          style={[styles.timeButton, selectedTimes.includes(time) && styles.timeButtonSelected]}
+                          onPress={() => {
+                            setSelectedTimes(prev => 
+                              prev.includes(time) 
+                                ? prev.filter(t => t !== time)
+                                : [...prev, time]
+                            );
+                          }}
+                        >
+                          <Text style={[styles.timeButtonText, selectedTimes.includes(time) && styles.timeButtonTextSelected]}>
+                            {time}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>접근 난이도: {difficultyLabels[selectedDifficulty - 1]}</Text>
+                    <View style={styles.difficultyContainer}>
+                      {[1, 2, 3, 4, 5].map((level) => (
+                        <TouchableOpacity
+                          key={level}
+                          style={[styles.difficultyButton, selectedDifficulty >= level && styles.difficultyButtonSelected]}
+                          onPress={() => setSelectedDifficulty(level)}
+                        >
+                          <Text style={[styles.difficultyButtonText, selectedDifficulty >= level && styles.difficultyButtonTextSelected]}>
+                            ★
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
                   <View style={styles.inputContainer}>
                     <View style={styles.labelRow}>
@@ -595,27 +811,27 @@ export default function HomeScreen() {
                   )}
                 </>
               )}
-              </ScrollView>
-            </KeyboardAvoidingView>
-            {(isAddingMarker || isEditingMarker) && (
-              <View style={[styles.buttonContainer, { paddingBottom: tabBarHeight + 20 }]}>
-                <TouchableOpacity 
-                  style={styles.cancelButton} 
-                  onPress={isAddingMarker ? handleCancelAddMarker : handleCancelEditMarker}
-                >
-                  <Text style={styles.cancelButtonText}>취소</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.saveButton} 
-                  onPress={isAddingMarker ? handleSaveMarker : handleUpdateMarker}
-                >
-                  <Text style={styles.saveButtonText}>
-                    {isAddingMarker ? '저장' : '완료'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
+              
+              {(isAddingMarker || isEditingMarker) && (
+                <View style={[styles.buttonContainer, { paddingBottom: tabBarHeight + 20 }]}>
+                  <TouchableOpacity 
+                    style={styles.cancelButton} 
+                    onPress={isAddingMarker ? handleCancelAddMarker : handleCancelEditMarker}
+                  >
+                    <Text style={styles.cancelButtonText}>취소</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.saveButton} 
+                    onPress={isAddingMarker ? handleSaveMarker : handleUpdateMarker}
+                  >
+                    <Text style={styles.saveButtonText}>
+                      {isAddingMarker ? '저장' : '완료'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </ScrollView>
         </BottomSheetView>
       </BottomSheet>
     </GestureHandlerRootView>
@@ -662,27 +878,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    flex: 1,
+    height: '100%',
   },
   sheetContent: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 8,
   },
   keyboardAvoidingView: {
     flex: 1,
   },
   scrollView: {
-    flex: 1,
+    height: '100%',
   },
   scrollViewContent: {
-    flexGrow: 1,
     paddingBottom: 20,
   },
   title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 24,
+    color: '#1a1a1a',
   },
   coordinates: {
     fontSize: 14,
@@ -696,25 +912,30 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   inputContainer: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   label: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
+    marginBottom: 10,
+    color: '#2c2c2c',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderColor: '#e1e1e1',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     fontSize: 16,
     backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   textArea: {
-    height: 80,
+    height: 90,
     textAlignVertical: 'top',
   },
   coordinateInfo: {
@@ -725,20 +946,24 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 16,
     paddingTop: 16,
-    paddingBottom: 20,
     paddingHorizontal: 0,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    backgroundColor: 'white',
+    backgroundColor: 'transparent',
+    marginTop: 20,
+    paddingBottom: 16,
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: '#6c757d',
-    paddingVertical: 12,
-    borderRadius: 8,
+    backgroundColor: '#8e9aaf',
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   cancelButtonText: {
     color: 'white',
@@ -748,9 +973,14 @@ const styles = StyleSheet.create({
   saveButton: {
     flex: 1,
     backgroundColor: '#007AFF',
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   saveButtonText: {
     color: 'white',
@@ -863,5 +1093,107 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  deleteZone: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    left: '50%',
+    transform: [{ translateX: -25 }],
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+    elevation: 5,
+  },
+  deleteZoneInner: {
+    width: 46,
+    height: 46,
+    backgroundColor: 'rgba(255, 59, 48, 0.06)',
+    borderRadius: 23,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 59, 48, 0.3)',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteZoneIcon: {
+    fontSize: 18,
+    color: 'rgba(255, 59, 48, 0.8)',
+    fontWeight: 'bold',
+  },
+  deleteZoneText: {
+    color: 'rgba(255, 59, 48, 0.7)',
+    fontSize: 8,
+    fontWeight: '600',
+    textAlign: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 6,
+    marginTop: 2,
+    position: 'absolute',
+    bottom: -12,
+  },
+  categoryButton: {
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: '#e1e1e1',
+  },
+  categoryButtonSelected: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  categoryButtonText: {
+    fontSize: 14,
+    color: '#4a4a4a',
+    fontWeight: '600',
+  },
+  categoryButtonTextSelected: {
+    color: 'white',
+  },
+  timeButton: {
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 18,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: '#e1e1e1',
+  },
+  timeButtonSelected: {
+    backgroundColor: '#34C759',
+    borderColor: '#34C759',
+  },
+  timeButtonText: {
+    fontSize: 14,
+    color: '#4a4a4a',
+    fontWeight: '600',
+  },
+  timeButtonTextSelected: {
+    color: 'white',
+  },
+  difficultyContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  difficultyButton: {
+    padding: 8,
+  },
+  difficultyButtonSelected: {
+    backgroundColor: 'transparent',
+  },
+  difficultyButtonText: {
+    fontSize: 24,
+    color: '#e1e1e1',
+  },
+  difficultyButtonTextSelected: {
+    color: '#FFD700',
   },
 });
