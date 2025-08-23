@@ -3,7 +3,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Keyboard, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import SuperCluster from 'supercluster';
@@ -44,8 +44,6 @@ export default function HomeScreen() {
   const [isDraggingMarker, setIsDraggingMarker] = useState(false);
   const [draggedMarkerId, setDraggedMarkerId] = useState<string | null>(null);
   const [originalMarkerPosition, setOriginalMarkerPosition] = useState<{latitude: number, longitude: number} | null>(null);
-  const [isMarkerInDeleteZone, setIsMarkerInDeleteZone] = useState(false);
-  const [mapRegion, setMapRegion] = useState(currentRegion);
   const tabBarHeight = useBottomTabBarHeight();
   
   const bottomSheetRef = useRef<BottomSheet>(null);
@@ -55,6 +53,22 @@ export default function HomeScreen() {
   const categories = ['풍경', '야경', '일출/일몰', '인물', '거리', '건축', '자연', '도시', '기타'];
   const timeOptions = ['새벽', '아침', '낮', '황금시간', '저녁', '밤'];
   const difficultyLabels = ['매우 쉬움', '쉬움', '보통', '어려움', '매우 어려움'];
+
+  const defaultRegion = {
+    latitude: 37.5665,
+    longitude: 126.9780,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  };
+
+  const currentRegion = location ? {
+    latitude: location.coords.latitude,
+    longitude: location.coords.longitude,
+    latitudeDelta: 0.01,
+    longitudeDelta: 0.01,
+  } : defaultRegion;
+
+  const [mapRegion, setMapRegion] = useState(currentRegion);
 
   useEffect(() => {
     (async () => {
@@ -73,20 +87,6 @@ export default function HomeScreen() {
     })();
   }, []);
 
-  const defaultRegion = {
-    latitude: 37.5665,
-    longitude: 126.9780,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  };
-
-  const currentRegion = location ? {
-    latitude: location.coords.latitude,
-    longitude: location.coords.longitude,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
-  } : defaultRegion;
-
   const superCluster = useMemo(() => new SuperCluster({
     radius: 60,
     maxZoom: 20,
@@ -97,7 +97,7 @@ export default function HomeScreen() {
 
   const geoJsonMarkers = useMemo(() => {
     return markers.map(marker => ({
-      type: 'Feature',
+      type: 'Feature' as const,
       properties: {
         cluster: false,
         markerId: marker.key,
@@ -106,7 +106,7 @@ export default function HomeScreen() {
         images: marker.images
       },
       geometry: {
-        type: 'Point',
+        type: 'Point' as const,
         coordinates: [marker.longitude, marker.latitude]
       }
     }));
@@ -117,7 +117,7 @@ export default function HomeScreen() {
     
     superCluster.load(geoJsonMarkers);
     
-    const bbox = [
+    const bbox: [number, number, number, number] = [
       mapRegion.longitude - mapRegion.longitudeDelta / 2,
       mapRegion.latitude - mapRegion.latitudeDelta / 2,
       mapRegion.longitude + mapRegion.longitudeDelta / 2,
@@ -197,16 +197,6 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const handleMarkerDragEnd = useCallback((markerKey: string, event: any) => {
-    const { coordinate } = event.nativeEvent;
-    setMarkers(prev => 
-      prev.map(marker => 
-        marker.key === markerKey 
-          ? { ...marker, latitude: coordinate.latitude, longitude: coordinate.longitude }
-          : marker
-      )
-    );
-  }, []);
 
   const handleSheetChanges = useCallback((index: number) => {
     if (index === -1) {
@@ -220,13 +210,6 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const handleSheetPress = useCallback(() => {
-    if (isAddingMarker || isEditingMarker) {
-      bottomSheetRef.current?.expand();
-    } else {
-      Keyboard.dismiss();
-    }
-  }, [isAddingMarker, isEditingMarker]);
 
   const handleSaveMarker = useCallback(async () => {
     try {
@@ -290,7 +273,7 @@ export default function HomeScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: 'images',
       allowsMultipleSelection: true,
       quality: 0.8,
       aspect: [4, 3],
@@ -312,7 +295,7 @@ export default function HomeScreen() {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: 'images',
       quality: 0.8,
       aspect: [4, 3],
     });
@@ -485,7 +468,6 @@ export default function HomeScreen() {
                     });
                     setIsDraggingMarker(true);
                     setDraggedMarkerId(originalMarker.key);
-                    setIsMarkerInDeleteZone(false);
                   }
                 }}
                 onDragEnd={(event) => {
@@ -528,7 +510,6 @@ export default function HomeScreen() {
                             setIsDraggingMarker(false);
                             setDraggedMarkerId(null);
                             setOriginalMarkerPosition(null);
-                            setIsMarkerInDeleteZone(false);
                           }
                         },
                         { text: '삭제', style: 'destructive', onPress: () => handleDeleteMarker(originalMarker.key) }
@@ -548,7 +529,6 @@ export default function HomeScreen() {
                   setIsDraggingMarker(false);
                   setDraggedMarkerId(null);
                   setOriginalMarkerPosition(null);
-                  setIsMarkerInDeleteZone(false);
                 }}
                 onPress={() => handleMarkerPress(originalMarker)}
                 pinColor={isEditMode ? (draggedMarkerId === originalMarker.key ? "red" : "orange") : "red"}
@@ -710,7 +690,6 @@ export default function HomeScreen() {
                       onChangeText={setMarkerTitle}
                       placeholder="스팟 이름을 입력하세요"
                       returnKeyType="next"
-                      blurOnSubmit={false}
                       onSubmitEditing={() => Keyboard.dismiss()}
                     />
                   </View>
