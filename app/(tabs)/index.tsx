@@ -45,6 +45,7 @@ export default function HomeScreen() {
   const [draggedMarkerId, setDraggedMarkerId] = useState<string | null>(null);
   const [originalMarkerPosition, setOriginalMarkerPosition] = useState<{latitude: number, longitude: number} | null>(null);
   const [isMarkerInDeleteZone, setIsMarkerInDeleteZone] = useState(false);
+  const [currentSheetIndex, setCurrentSheetIndex] = useState(-1);
   const tabBarHeight = useBottomTabBarHeight();
   
   const bottomSheetRef = useRef<BottomSheet>(null);
@@ -231,6 +232,8 @@ export default function HomeScreen() {
 
 
   const handleSheetChanges = useCallback((index: number) => {
+    setCurrentSheetIndex(index);
+    
     if (index === -1) {
       setIsAddingMarker(false);
       setIsEditingMarker(false);
@@ -242,10 +245,17 @@ export default function HomeScreen() {
     }
   }, []);
 
+
   const handleHandlePress = useCallback(() => {
-    // 13% 상태에서 핸들바 클릭 시 75%로 확장
-    bottomSheetRef.current?.snapToIndex(1);
-  }, []);
+    if (currentSheetIndex === 0) {
+      // 13% 상태에서 핸들바 클릭 시 75%로 확장
+      bottomSheetRef.current?.snapToIndex(1);
+    } else if (currentSheetIndex === 1) {
+      // 75% 상태에서 핸들바 클릭 시 13%로 축소
+      bottomSheetRef.current?.snapToIndex(0);
+    }
+  }, [currentSheetIndex]);
+
 
 
   const handleSaveMarker = useCallback(async () => {
@@ -607,6 +617,15 @@ export default function HomeScreen() {
         enablePanDownToClose={true}
         enableDynamicSizing={false}
         maxDynamicContentSize={0.75}
+        animateOnMount={true}
+        onAnimate={(fromIndex, toIndex) => {
+          // 75%에서 바로 닫히려고 할 때 13%로 강제 이동
+          if (fromIndex === 1 && toIndex === -1) {
+            setTimeout(() => {
+              bottomSheetRef.current?.snapToIndex(0);
+            }, 0);
+          }
+        }}
         handleComponent={() => (
           <TouchableOpacity 
             style={styles.handleContainer}
