@@ -49,7 +49,8 @@ export default function HomeScreen() {
   
   const bottomSheetRef = useRef<BottomSheet>(null);
   const mapRef = useRef<MapView>(null);
-  const snapPoints = useMemo(() => ['75%'], []);
+  const snapPoints = useMemo(() => ['13%', '75%'], []);
+
 
   const categories = ['풍경', '야경', '일출/일몰', '인물', '거리', '건축', '자연', '도시', '기타'];
   const timeOptions = ['새벽', '아침', '낮', '황금시간', '저녁', '밤'];
@@ -132,16 +133,28 @@ export default function HomeScreen() {
 
   const handleMapLongPress = (event: any) => {
     const { coordinate } = event.nativeEvent;
+    
+    // 스팟 추가 중이라면 기존 추가를 취소하고 새로운 위치로 시작
+    if (isAddingMarker) {
+      // 기존 데이터 모두 초기화
+      setMarkerTitle('');
+      setMarkerDescription('');
+      setSelectedImages([]);
+      setSelectedCategory('');
+      setSelectedTimes([]);
+      setSelectedDifficulty(1);
+    }
+    
+    // 다른 상태들도 초기화 (편집 모드나 선택된 마커가 있다면)
+    setIsEditingMarker(false);
+    setSelectedMarker(null);
+    
+    // 새로운 스팟 추가 시작
     setPendingCoordinate(coordinate);
     setIsAddingMarker(true);
-    setMarkerTitle('');
-    setMarkerDescription('');
-    setSelectedImages([]);
-    setSelectedCategory('');
-    setSelectedTimes([]);
-    setSelectedDifficulty(1);
     
     const latitudeDelta = 0.01;
+    // mapPadding bottom 20px을 고려하여 중심을 조정
     const adjustedLatitude = coordinate.latitude - (latitudeDelta * 0.5);
     
     mapRef.current?.animateToRegion({
@@ -152,7 +165,7 @@ export default function HomeScreen() {
     }, 800);
     
     setTimeout(() => {
-      bottomSheetRef.current?.snapToIndex(0);
+      bottomSheetRef.current?.snapToIndex(1); // 75% 상태로 열기
     }, 300);
   };
 
@@ -160,7 +173,7 @@ export default function HomeScreen() {
     setSelectedMarker(marker);
     setIsAddingMarker(false);
     setIsEditingMarker(false);
-    bottomSheetRef.current?.snapToIndex(0);
+    bottomSheetRef.current?.snapToIndex(1); // 75% 상태로 열기
   }, []);
 
   const handleClusterPress = useCallback((cluster: any) => {
@@ -227,6 +240,11 @@ export default function HomeScreen() {
       setMarkerTitle('');
       setMarkerDescription('');
     }
+  }, []);
+
+  const handleHandlePress = useCallback(() => {
+    // 13% 상태에서 핸들바 클릭 시 75%로 확장
+    bottomSheetRef.current?.snapToIndex(1);
   }, []);
 
 
@@ -344,10 +362,11 @@ export default function HomeScreen() {
   const handleMapPress = useCallback(() => {
     Keyboard.dismiss();
     
-    if (isAddingMarker || isEditingMarker) {
+    if (isAddingMarker || isEditingMarker || selectedMarker) {
+      // 바텀시트가 열린 상태(추가/편집/정보보기)에서 지도 클릭 시 20%로 축소
       bottomSheetRef.current?.snapToIndex(0);
     }
-  }, [isAddingMarker, isEditingMarker]);
+  }, [isAddingMarker, isEditingMarker, selectedMarker]);
 
   const handleEditMarker = useCallback(() => {
     if (!selectedMarker) return;
@@ -403,7 +422,7 @@ export default function HomeScreen() {
     setSelectedCategory('');
     setSelectedTimes([]);
     setSelectedDifficulty(1);
-    bottomSheetRef.current?.snapToIndex(0);
+    bottomSheetRef.current?.snapToIndex(1); // 75% 상태로 열기
   }, [selectedMarker, markerTitle, markerDescription, selectedImages, selectedCategory, selectedTimes, selectedDifficulty]);
 
   const handleDeleteMarker = useCallback((markerId: string) => {
@@ -450,6 +469,7 @@ export default function HomeScreen() {
         onLongPress={!isEditMode ? handleMapLongPress : undefined}
         onPress={handleMapPress}
         onRegionChangeComplete={onRegionChangeComplete}
+        mapPadding={{ top: 0, right: 0, bottom: 20, left: 0 }}
       >
         {clusteredMarkers.map((item, index) => {
           const [longitude, latitude] = item.geometry.coordinates;
@@ -587,6 +607,15 @@ export default function HomeScreen() {
         enablePanDownToClose={true}
         enableDynamicSizing={false}
         maxDynamicContentSize={0.75}
+        handleComponent={() => (
+          <TouchableOpacity 
+            style={styles.handleContainer}
+            onPress={handleHandlePress}
+            activeOpacity={0.7}
+          >
+            <View style={styles.handleBar} />
+          </TouchableOpacity>
+        )}
       >
         <BottomSheetView style={styles.contentContainer}>
           <ScrollView 
@@ -1208,5 +1237,19 @@ const styles = StyleSheet.create({
   },
   difficultyButtonTextSelected: {
     color: '#FFD700',
+  },
+  handleContainer: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  handleBar: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#D1D5DB',
+    borderRadius: 2,
   },
 });
