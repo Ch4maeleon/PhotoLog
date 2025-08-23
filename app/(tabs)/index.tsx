@@ -44,6 +44,7 @@ export default function HomeScreen() {
   const [isDraggingMarker, setIsDraggingMarker] = useState(false);
   const [draggedMarkerId, setDraggedMarkerId] = useState<string | null>(null);
   const [originalMarkerPosition, setOriginalMarkerPosition] = useState<{latitude: number, longitude: number} | null>(null);
+  const [isMarkerInDeleteZone, setIsMarkerInDeleteZone] = useState(false);
   const tabBarHeight = useBottomTabBarHeight();
   
   const bottomSheetRef = useRef<BottomSheet>(null);
@@ -86,6 +87,7 @@ export default function HomeScreen() {
       }
     })();
   }, []);
+
 
   const superCluster = useMemo(() => new SuperCluster({
     radius: 60,
@@ -175,6 +177,23 @@ export default function HomeScreen() {
   const onRegionChangeComplete = useCallback((region: any) => {
     setMapRegion(region);
   }, []);
+
+  const checkIfInDeleteZone = useCallback((coordinate: {latitude: number, longitude: number}) => {
+    const mapTop = mapRegion.latitude + (mapRegion.latitudeDelta / 2);
+    const deleteZoneCenter = {
+      latitude: mapTop - (mapRegion.latitudeDelta * 0.15),
+      longitude: mapRegion.longitude
+    };
+    
+    const distance = Math.sqrt(
+      Math.pow(coordinate.latitude - deleteZoneCenter.latitude, 2) +
+      Math.pow(coordinate.longitude - deleteZoneCenter.longitude, 2)
+    );
+    
+    const deleteRadius = mapRegion.latitudeDelta * 0.12;
+    return distance <= deleteRadius;
+  }, [mapRegion]);
+
 
   const getCurrentGPSMetadata = useCallback(async () => {
     try {
@@ -458,8 +477,9 @@ export default function HomeScreen() {
             return (
               <Marker
                 key={originalMarker.key}
-                coordinate={{ latitude, longitude }}
+                coordinate={{ latitude: originalMarker.latitude, longitude: originalMarker.longitude }}
                 draggable={isEditMode}
+                opacity={isEditMode && draggedMarkerId === originalMarker.key && isMarkerInDeleteZone ? 0.3 : 1}
                 onDragStart={() => {
                   if (isEditMode) {
                     setOriginalMarkerPosition({
@@ -468,36 +488,31 @@ export default function HomeScreen() {
                     });
                     setIsDraggingMarker(true);
                     setDraggedMarkerId(originalMarker.key);
+                    setIsMarkerInDeleteZone(false);
+                  }
+                }}
+                onDrag={(event) => {
+                  if (isEditMode && draggedMarkerId === originalMarker.key) {
+                    const { coordinate } = event.nativeEvent;
+                    const inDeleteZone = checkIfInDeleteZone(coordinate);
+                    setIsMarkerInDeleteZone(inDeleteZone);
+                    
+                    // 드래그 중 실시간으로 마커 위치 업데이트
+                    setMarkers(prev => 
+                      prev.map(marker => 
+                        marker.key === originalMarker.key 
+                          ? { ...marker, latitude: coordinate.latitude, longitude: coordinate.longitude }
+                          : marker
+                      )
+                    );
                   }
                 }}
                 onDragEnd={(event) => {
                   const { coordinate } = event.nativeEvent;
-                  
-                  // 드래그 종료 시 삭제 영역 체크
-                  const mapTop = mapRegion.latitude + (mapRegion.latitudeDelta / 2);
-                  const deleteZoneCenter = {
-                    latitude: mapTop - (mapRegion.latitudeDelta * 0.15),
-                    longitude: mapRegion.longitude
-                  };
-                  
-                  const distance = Math.sqrt(
-                    Math.pow(coordinate.latitude - deleteZoneCenter.latitude, 2) +
-                    Math.pow(coordinate.longitude - deleteZoneCenter.longitude, 2)
-                  );
-                  
-                  const deleteRadius = mapRegion.latitudeDelta * 0.12;
-                  const inDeleteZone = distance <= deleteRadius;
+                  const inDeleteZone = checkIfInDeleteZone(coordinate);
                   
                   if (inDeleteZone && isEditMode && isDraggingMarker) {
-                    // 삭제 영역에서 종료 - 즉시 원래 위치로 복원하고 다이얼로그 표시
-                    setMarkers(prev => 
-                      prev.map(marker => 
-                        marker.key === originalMarker.key 
-                          ? { ...marker, latitude: originalMarkerPosition!.latitude, longitude: originalMarkerPosition!.longitude }
-                          : marker
-                      )
-                    );
-                    
+                    // 삭제 영역에서 종료 - 현재 위치를 유지하고 Alert 표시
                     Alert.alert(
                       '마커 삭제',
                       '이 마커를 삭제하시겠습니까?',
@@ -506,13 +521,31 @@ export default function HomeScreen() {
                           text: '취소', 
                           style: 'cancel',
                           onPress: () => {
-                            // 취소 시 상태만 초기화
+                            // 취소 시 원래 위치로 복원
+                            setMarkers(prev => 
+                              prev.map(marker => 
+                                marker.key === originalMarker.key 
+                                  ? { ...marker, latitude: originalMarkerPosition!.latitude, longitude: originalMarkerPosition!.longitude }
+                                  : marker
+                              )
+                            );
                             setIsDraggingMarker(false);
                             setDraggedMarkerId(null);
                             setOriginalMarkerPosition(null);
+                            setIsMarkerInDeleteZone(false);
                           }
                         },
-                        { text: '삭제', style: 'destructive', onPress: () => handleDeleteMarker(originalMarker.key) }
+                        { 
+                          text: '삭제', 
+                          style: 'destructive', 
+                          onPress: () => {
+                            handleDeleteMarker(originalMarker.key);
+                            setIsDraggingMarker(false);
+                            setDraggedMarkerId(null);
+                            setOriginalMarkerPosition(null);
+                            setIsMarkerInDeleteZone(false);
+                          }
+                        }
                       ]
                     );
                   } else {
@@ -524,11 +557,12 @@ export default function HomeScreen() {
                           : marker
                       )
                     );
+                    
+                    setIsDraggingMarker(false);
+                    setDraggedMarkerId(null);
+                    setOriginalMarkerPosition(null);
+                    setIsMarkerInDeleteZone(false);
                   }
-                  
-                  setIsDraggingMarker(false);
-                  setDraggedMarkerId(null);
-                  setOriginalMarkerPosition(null);
                 }}
                 onPress={() => handleMarkerPress(originalMarker)}
                 pinColor={isEditMode ? (draggedMarkerId === originalMarker.key ? "red" : "orange") : "red"}
