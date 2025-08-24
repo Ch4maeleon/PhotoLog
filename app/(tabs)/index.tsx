@@ -61,6 +61,7 @@ export default function HomeScreen() {
     description: string;
   } | null>(null);
   const [showWeatherDetails, setShowWeatherDetails] = useState(false);
+  const [tempWeatherMarker, setTempWeatherMarker] = useState<{latitude: number, longitude: number} | null>(null);
   const tabBarHeight = useBottomTabBarHeight();
   
   const bottomSheetRef = useRef<BottomSheet>(null);
@@ -211,6 +212,7 @@ export default function HomeScreen() {
     // 다른 상태들도 초기화 (편집 모드나 선택된 마커가 있다면)
     setIsEditingMarker(false);
     setSelectedMarker(null);
+    setTempWeatherMarker(null); // 날씨 마커 제거
     
     // 새로운 스팟 추가 시작
     setPendingCoordinate(coordinate);
@@ -236,11 +238,14 @@ export default function HomeScreen() {
     setSelectedMarker(marker);
     setIsAddingMarker(false);
     setIsEditingMarker(false);
+    setTempWeatherMarker(null); // 날씨 마커 제거
     bottomSheetRef.current?.snapToIndex(1); // 75% 상태로 열기
   }, []);
 
   const handleClusterPress = useCallback((cluster: any) => {
     const expansionZoom = Math.min(superCluster.getClusterExpansionZoom(cluster.id), 20);
+    
+    setTempWeatherMarker(null); // 날씨 마커 제거
     
     mapRef.current?.animateToRegion({
       latitude: cluster.geometry.coordinates[1],
@@ -305,6 +310,7 @@ export default function HomeScreen() {
       setMarkerTitle('');
       setMarkerDescription('');
       setShowWeatherDetails(false);
+      setTempWeatherMarker(null);
     }
   }, []);
 
@@ -449,17 +455,43 @@ export default function HomeScreen() {
     );
   }, [handlePickImage, handleTakePhoto]);
 
-  const handleMapPress = useCallback(() => {
+  const handleMapPress = useCallback((event: any) => {
     Keyboard.dismiss();
     
     if (isAddingMarker || isEditingMarker || selectedMarker) {
-      // 바텀시트가 열린 상태(추가/편집/정보보기)에서 지도 클릭 시 20%로 축소
+      // 바텀시트가 열린 상태(추가/편집/정보보기)에서 지도 클릭 시 13%로 축소
+      setTempWeatherMarker(null); // 날씨 마커 제거
       bottomSheetRef.current?.snapToIndex(0);
     } else if (showWeatherDetails) {
       // 날씨 정보가 열린 상태에서 지도 클릭 시 바로 닫기
       bottomSheetRef.current?.close();
+    } else {
+      // 기본 상태에서 지도 클릭 시 해당 위치로 이동하고 날씨 업데이트
+      const coordinate = event?.nativeEvent?.coordinate;
+      
+      // coordinate 유효성 검사
+      if (!coordinate || typeof coordinate.latitude !== 'number' || typeof coordinate.longitude !== 'number') {
+        console.warn('Invalid coordinate from map press event');
+        return;
+      }
+      
+      // 임시 날씨 마커 설정
+      setTempWeatherMarker(coordinate);
+      
+      // 지도를 클릭한 위치로 이동 (약간의 지연 추가로 더 안정적으로)
+      setTimeout(() => {
+        mapRef.current?.animateToRegion({
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }, 500);
+      }, 50);
+      
+      // 해당 위치의 날씨 정보 업데이트
+      fetchWeather(coordinate.latitude, coordinate.longitude);
     }
-  }, [isAddingMarker, isEditingMarker, selectedMarker, showWeatherDetails]);
+  }, [isAddingMarker, isEditingMarker, selectedMarker, showWeatherDetails, fetchWeather]);
 
   const handleEditMarker = useCallback(() => {
     if (!selectedMarker) return;
@@ -593,6 +625,11 @@ export default function HomeScreen() {
         onPress={handleMapPress}
         onRegionChangeComplete={onRegionChangeComplete}
         mapPadding={{ top: 0, right: 0, bottom: 20, left: 0 }}
+        scrollEnabled={true}
+        pitchEnabled={true}
+        rotateEnabled={true}
+        moveOnMarkerPress={false}
+        loadingEnabled={true}
       >
         {clusteredMarkers.map((item: any, index: number) => {
           const [longitude, latitude] = item.geometry.coordinates;
@@ -708,7 +745,13 @@ export default function HomeScreen() {
                   }
                 }}
                 onPress={() => handleMarkerPress(originalMarker)}
-                pinColor={isEditMode ? (draggedMarkerId === originalMarker.key ? "red" : "orange") : "red"}
+                pinColor={
+                  isEditMode 
+                    ? (draggedMarkerId === originalMarker.key 
+                        ? (isMarkerInDeleteZone ? "#FF3B30" : "#FF9500") // 삭제 영역: 빨강, 드래그 중: 주황
+                        : "#34C759") // 편집 모드의 다른 마커들: 초록
+                    : "#007AFF" // 일반 모드: 파랑
+                }
               />
             );
           }
@@ -716,8 +759,15 @@ export default function HomeScreen() {
         {isAddingMarker && pendingCoordinate && (
           <Marker
             coordinate={pendingCoordinate}
-            pinColor="blue"
-            opacity={0.7}
+            pinColor="#5856D6" // 보라색: 새 스팟 추가 중
+            opacity={0.8}
+          />
+        )}
+        {tempWeatherMarker && (
+          <Marker
+            coordinate={tempWeatherMarker}
+            pinColor="#FFD60A" // 노란색: 날씨 조회 위치
+            opacity={0.9}
           />
         )}
       </MapView>
