@@ -3,7 +3,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Image, Keyboard, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Image, Keyboard, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import SuperCluster from 'supercluster';
@@ -67,6 +67,8 @@ export default function HomeScreen() {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const mapRef = useRef<MapView>(null);
   const snapPoints = useMemo(() => ['13%', '75%'], []);
+  const hintOpacity = useRef(new Animated.Value(0.7)).current;
+  const dotOpacity = useRef(new Animated.Value(0.3)).current;
 
 
   const categories = ['풍경', '야경', '일출/일몰', '인물', '거리', '건축', '자연', '도시', '기타'];
@@ -153,6 +155,42 @@ export default function HomeScreen() {
     })();
   }, [fetchWeather]);
 
+  // 힌트 페이드인 + 점 애니메이션
+  useEffect(() => {
+    if (isAddingMarker && currentSheetIndex === 0) {
+      // 힌트 박스 페이드인
+      Animated.timing(hintOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+      
+      // 점 깜빡이는 애니메이션
+      const dotAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(dotOpacity, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(dotOpacity, {
+            toValue: 0.3,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      dotAnimation.start();
+      
+      return () => dotAnimation.stop();
+    } else {
+      Animated.timing(hintOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isAddingMarker, currentSheetIndex, hintOpacity, dotOpacity]);
 
   const superCluster = useMemo(() => new SuperCluster({
     radius: 60,
@@ -606,6 +644,27 @@ export default function HomeScreen() {
             <Text style={styles.weatherTemp}>{weather.temp}°</Text>
           </TouchableOpacity>
         </View>
+      )}
+      
+      {isAddingMarker && currentSheetIndex === 0 && (
+        <Animated.View style={[styles.progressHintContainer, { opacity: hintOpacity }]}>
+          <TouchableOpacity 
+            style={styles.progressHintBox}
+            onPress={() => {
+              bottomSheetRef.current?.snapToIndex(1);
+              // 즉시 안내 문구 사라지게 하기
+              Animated.timing(hintOpacity, {
+                toValue: 0,
+                duration: 150,
+                useNativeDriver: true,
+              }).start();
+            }}
+            activeOpacity={0.7}
+          >
+            <Animated.Text style={[styles.progressDot, { opacity: dotOpacity }]}>●</Animated.Text>
+            <Text style={styles.progressText}>스팟 추가 중...</Text>
+          </TouchableOpacity>
+        </Animated.View>
       )}
       
       {isEditMode && isDraggingMarker && (
@@ -1620,5 +1679,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#1a1a1a',
+  },
+  progressHintContainer: {
+    position: 'absolute',
+    bottom: 110,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 1000,
+    elevation: 5,
+  },
+  progressHintBox: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    alignItems: 'center',
+    flexDirection: 'row',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  progressDot: {
+    fontSize: 12,
+    color: '#007AFF',
+    marginRight: 6,
+  },
+  progressText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
   },
 });
