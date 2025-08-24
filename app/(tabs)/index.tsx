@@ -142,9 +142,8 @@ export default function HomeScreen() {
     // 홈으로 리셋 중임을 표시
     setIsResettingToHome(true);
     
-    // 바텀시트를 강제로 닫기 (여러 번 시도)
+    // 바텀시트를 즉시 닫기
     bottomSheetRef.current?.close();
-    bottomSheetRef.current?.snapToIndex(-1);
     
     // 즉시 상태 초기화
     setCurrentSheetIndex(-1);
@@ -166,18 +165,7 @@ export default function HomeScreen() {
     setShowWeatherDetails(false);
     setTempWeatherMarker(null);
     
-    // 다시 한 번 바텀시트 닫기 시도
-    setTimeout(() => {
-      bottomSheetRef.current?.close();
-      setIsResettingToHome(false);
-    }, 50);
-    
-    // 한 번 더 확실하게 닫기
-    setTimeout(() => {
-      bottomSheetRef.current?.close();
-    }, 150);
-    
-    // 현재 위치로 이동
+    // 현재 위치로 빠르게 이동
     if (location) {
       const currentRegion = {
         latitude: location.coords.latitude,
@@ -186,9 +174,15 @@ export default function HomeScreen() {
         longitudeDelta: 0.01,
       };
       
-      mapRef.current?.animateToRegion(currentRegion, 1000);
+      // 애니메이션 시간을 500ms로 단축
+      mapRef.current?.animateToRegion(currentRegion, 500);
       fetchWeather(location.coords.latitude, location.coords.longitude);
     }
+    
+    // 리셋 상태 해제 (빠르게 처리)
+    setTimeout(() => {
+      setIsResettingToHome(false);
+    }, 100);
   }, [location, fetchWeather]);
 
   // 홈 탭 클릭 시 모든 동작 취소하고 현재 위치로 이동
