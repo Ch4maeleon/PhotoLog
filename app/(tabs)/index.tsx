@@ -481,7 +481,7 @@ export default function HomeScreen() {
         onRegionChangeComplete={onRegionChangeComplete}
         mapPadding={{ top: 0, right: 0, bottom: 20, left: 0 }}
       >
-        {clusteredMarkers.map((item, index) => {
+        {clusteredMarkers.map((item: any, index: number) => {
           const [longitude, latitude] = item.geometry.coordinates;
           
           if (item.properties.cluster) {
