@@ -218,6 +218,9 @@ export default function HomeScreen() {
     setPendingCoordinate(coordinate);
     setIsAddingMarker(true);
     
+    // 해당 위치의 날씨 정보 업데이트
+    fetchWeather(coordinate.latitude, coordinate.longitude);
+    
     const latitudeDelta = 0.01;
     // mapPadding bottom 20px을 고려하여 중심을 조정
     const adjustedLatitude = coordinate.latitude - (latitudeDelta * 0.5);
@@ -239,8 +242,12 @@ export default function HomeScreen() {
     setIsAddingMarker(false);
     setIsEditingMarker(false);
     setTempWeatherMarker(null); // 날씨 마커 제거
+    
+    // 해당 마커 위치의 날씨 정보 업데이트
+    fetchWeather(marker.latitude, marker.longitude);
+    
     bottomSheetRef.current?.snapToIndex(1); // 75% 상태로 열기
-  }, []);
+  }, [fetchWeather]);
 
   const handleClusterPress = useCallback((cluster: any) => {
     const expansionZoom = Math.min(superCluster.getClusterExpansionZoom(cluster.id), 20);
