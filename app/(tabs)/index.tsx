@@ -699,7 +699,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
       
-      {weather && !showWeatherDetails && (
+      {weather && (
         <View style={styles.weatherContainer}>
           <TouchableOpacity 
             style={styles.weatherWidget} 
@@ -906,7 +906,8 @@ export default function HomeScreen() {
         )}
       </MapView>
       
-      <BottomSheet
+      <View style={styles.bottomSheetContainer}>
+        <BottomSheet
         ref={bottomSheetRef}
         index={-1}
         snapPoints={snapPoints}
@@ -1261,7 +1262,8 @@ export default function HomeScreen() {
             </View>
           </ScrollView>
         </BottomSheetView>
-      </BottomSheet>
+        </BottomSheet>
+      </View>
     </GestureHandlerRootView>
   );
 }
@@ -1784,5 +1786,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     fontWeight: '500',
+  },
+  bottomSheetContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+    elevation: 1000,
+    pointerEvents: 'box-none',
   },
 });
