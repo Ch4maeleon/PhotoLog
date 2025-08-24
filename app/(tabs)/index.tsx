@@ -193,12 +193,12 @@ export default function HomeScreen() {
 
   // 홈 탭 클릭 시 모든 동작 취소하고 현재 위치로 이동
   useEffect(() => {
-    global.homeTabPressed = () => {
+    (global as any).homeTabPressed = () => {
       resetToHome();
     };
 
     return () => {
-      global.homeTabPressed = undefined;
+      (global as any).homeTabPressed = undefined;
     };
   }, [resetToHome]);
 
