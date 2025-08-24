@@ -22,12 +22,28 @@ export default function HomeScreen() {
     sunset: string;
     description: string;
   } | null>(null);
+  const [hourlyForecast, setHourlyForecast] = useState<{
+    time: string;
+    temp: number;
+    condition: string;
+  }[]>([]);
+  const [dailyForecast, setDailyForecast] = useState<{
+    date: string;
+    minTemp: number;
+    maxTemp: number;
+    condition: string;
+  }[]>([]);
+  const [activeTab, setActiveTab] = useState<'hourly' | 'daily'>('hourly');
+  const [currentLocation, setCurrentLocation] = useState<string>('Unknown Location');
+  const [airQuality, setAirQuality] = useState<{pm25: number, pm10: number, aqi: number} | null>(null);
   const [showWeatherDetails, setShowWeatherDetails] = useState(false);
   const tabBarHeight = useBottomTabBarHeight();
   
   const bottomSheetRef = useRef<BottomSheet>(null);
   const mapRef = useRef<MapView>(null);
-  const snapPoints = useMemo(() => ['75%'], []);
+  const hourlyScrollRef = useRef<ScrollView>(null);
+  const dailyScrollRef = useRef<ScrollView>(null);
+  const snapPoints = useMemo(() => ['70%'], []);
 
   const defaultRegion = {
     latitude: 37.5665,
@@ -47,15 +63,23 @@ export default function HomeScreen() {
   const fetchWeather = useCallback(async (lat: number, lng: number) => {
     try {
       const API_KEY = '6a912e0ef1cab73570c17e15c0feab5d';
-      const response = await fetch(
+      
+      // 현재 날씨 데이터
+      const currentResponse = await fetch(
         `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&appid=${API_KEY}&units=metric&lang=kr`
       );
       
-      if (!response.ok) {
+      // 5일 예보 데이터
+      const forecastResponse = await fetch(
+        `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lng}&appid=${API_KEY}&units=metric&lang=kr`
+      );
+      
+      if (!currentResponse.ok || !forecastResponse.ok) {
         throw new Error('Weather API failed');
       }
       
-      const data = await response.json();
+      const currentData = await currentResponse.json();
+      const forecastData = await forecastResponse.json();
       
       const formatTime = (timestamp: number) => {
         return new Date(timestamp * 1000).toLocaleTimeString('ko-KR', {
@@ -65,28 +89,125 @@ export default function HomeScreen() {
         });
       };
       
+      // 현재 날씨
       setWeather({
-        temp: Math.round(data.main.temp),
-        condition: data.weather[0].main
+        temp: Math.round(currentData.main.temp),
+        condition: currentData.weather[0].main
       });
       
       setDetailedWeather({
-        temp: Math.round(data.main.temp),
-        condition: data.weather[0].main,
-        feelsLike: Math.round(data.main.feels_like),
-        humidity: data.main.humidity,
-        windSpeed: Math.round(data.wind?.speed * 3.6) || 0,
-        windDirection: data.wind?.deg || 0,
-        pressure: data.main.pressure,
-        visibility: Math.round((data.visibility || 10000) / 1000),
-        sunrise: formatTime(data.sys.sunrise),
-        sunset: formatTime(data.sys.sunset),
-        description: data.weather[0].description
+        temp: Math.round(currentData.main.temp),
+        condition: currentData.weather[0].main,
+        feelsLike: Math.round(currentData.main.feels_like),
+        humidity: currentData.main.humidity,
+        windSpeed: Math.round(currentData.wind?.speed * 3.6) || 0,
+        windDirection: currentData.wind?.deg || 0,
+        pressure: currentData.main.pressure,
+        visibility: Math.round((currentData.visibility || 10000) / 1000),
+        sunrise: formatTime(currentData.sys.sunrise),
+        sunset: formatTime(currentData.sys.sunset),
+        description: currentData.weather[0].description
       });
+      
+      // 시간대별 예보 (7개, 3시간 간격)
+      const hourlyData = forecastData.list.slice(0, 7).map((item: any) => {
+        const date = new Date(item.dt * 1000);
+        const hour = date.getHours();
+        
+        return {
+          time: hour + '시',
+          temp: Math.round(item.main.temp),
+          condition: item.weather[0].main
+        };
+      });
+      setHourlyForecast(hourlyData);
+      
+      // 일별 예보 (6일) - 날짜/요일 표시
+      const dailyData: { [key: string]: { temps: number[], condition: string, date: string } } = {};
+      
+      forecastData.list.forEach((item: any) => {
+        const date = new Date(item.dt * 1000);
+        const dateKey = date.toISOString().split('T')[0];
+        
+        if (!dailyData[dateKey]) {
+          const dayMonth = `${date.getMonth() + 1}.${date.getDate()}`;
+          const dayName = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+          
+          dailyData[dateKey] = {
+            temps: [],
+            condition: item.weather[0].main,
+            date: `${dayMonth}.(${dayName})`
+          };
+        }
+        dailyData[dateKey].temps.push(item.main.temp);
+      });
+      
+      const dailyForecastData = Object.values(dailyData).slice(0, 6).map(day => ({
+        date: day.date,
+        minTemp: Math.round(Math.min(...day.temps)),
+        maxTemp: Math.round(Math.max(...day.temps)),
+        condition: day.condition
+      }));
+      
+      setDailyForecast(dailyForecastData);
+      
+      // 대기질 데이터 가져오기 (OpenWeatherMap Air Pollution API)
+      try {
+        const airResponse = await fetch(
+          `https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lng}&appid=${API_KEY}`
+        );
+        
+        if (airResponse.ok) {
+          const airData = await airResponse.json();
+          if (airData.list && airData.list.length > 0) {
+            const pollution = airData.list[0];
+            setAirQuality({
+              pm25: pollution.components.pm2_5,
+              pm10: pollution.components.pm10,
+              aqi: pollution.main.aqi
+            });
+          }
+        }
+      } catch (airError) {
+        console.log('Air quality fetch failed:', airError);
+        setAirQuality(null);
+      }
+      
+      // 위치 정보 가져오기 (Expo Location)
+      try {
+        const address = await Location.reverseGeocodeAsync({
+          latitude: lat,
+          longitude: lng
+        });
+        
+        if (address && address.length > 0) {
+          const location = address[0];
+          let locationString = '';
+          
+          if (location.city && location.district) {
+            locationString = `${location.city} ${location.district}`;
+          } else if (location.city) {
+            locationString = location.city;
+          } else if (location.region) {
+            locationString = location.region;
+          }
+          
+          if (locationString) {
+            setCurrentLocation(locationString);
+          }
+        }
+      } catch (geocodeError) {
+        console.log('Reverse geocoding failed:', geocodeError);
+        // 기본값 유지
+      }
+      
     } catch (error) {
       console.log('Weather fetch failed:', error);
       setWeather(null);
       setDetailedWeather(null);
+      setHourlyForecast([]);
+      setDailyForecast([]);
+      setAirQuality(null);
     }
   }, []);
 
@@ -96,6 +217,9 @@ export default function HomeScreen() {
     
     // 상태 초기화
     setShowWeatherDetails(false);
+    setActiveTab('hourly');
+    setCurrentLocation('Unknown Location');
+    setAirQuality(null);
     
     // 현재 위치로 이동
     if (location) {
@@ -145,6 +269,7 @@ export default function HomeScreen() {
     if (!detailedWeather) return;
     
     setShowWeatherDetails(true);
+    setActiveTab('hourly'); // 항상 시간대별로 시작
     bottomSheetRef.current?.snapToIndex(0);
   }, [detailedWeather]);
 
@@ -175,6 +300,39 @@ export default function HomeScreen() {
       case 'fog':
       case 'haze': return '🌫️';
       default: return '🌤️';
+    }
+  };
+
+  const getSimpleWeatherDescription = (condition: string, description: string) => {
+    switch (condition.toLowerCase()) {
+      case 'clear': return '맑음';
+      case 'clouds': 
+        if (description.includes('few')) return '구름조금';
+        if (description.includes('scattered')) return '구름많음';
+        if (description.includes('broken') || description.includes('overcast')) return '흐림';
+        return '구름많음';
+      case 'rain': return '비';
+      case 'drizzle': return '이슬비';
+      case 'thunderstorm': return '천둥번개';
+      case 'snow': return '눈';
+      case 'mist':
+      case 'fog': return '안개';
+      case 'haze': return '실안개';
+      default: return '맑음';
+    }
+  };
+
+  const getAirQualityLevel = (value: number, type: 'pm25' | 'pm10') => {
+    if (type === 'pm25') {
+      if (value <= 15) return { text: '좋음', color: '#007AFF' };
+      if (value <= 35) return { text: '보통', color: '#1a1a1a' };
+      if (value <= 75) return { text: '나쁨', color: '#FF3B30' };
+      return { text: '매우나쁨', color: '#FF3B30' };
+    } else { // pm10
+      if (value <= 30) return { text: '좋음', color: '#007AFF' };
+      if (value <= 80) return { text: '보통', color: '#1a1a1a' };
+      if (value <= 150) return { text: '나쁨', color: '#FF3B30' };
+      return { text: '매우나쁨', color: '#FF3B30' };
     }
   };
 
@@ -242,55 +400,129 @@ export default function HomeScreen() {
             <View style={[styles.sheetContent, showWeatherDetails && { paddingBottom: tabBarHeight + 5 }]}>
               {showWeatherDetails ? (
                 <>
-                  <Text style={styles.title}>날씨 정보</Text>
+                  {/* 헤더 */}
+                  <View style={styles.weatherHeader}>
+                    <Text style={styles.locationTitle}>{currentLocation}</Text>
+                  </View>
+                  
+                  {/* 구분선 */}
+                  <View style={styles.headerDivider} />
+                  
                   {detailedWeather && (
                     <View>
-                      <View style={styles.weatherMainInfo}>
-                        <Text style={styles.weatherMainIcon}>{getWeatherIcon(detailedWeather.condition)}</Text>
-                        <View>
-                          <Text style={styles.weatherMainTemp}>{detailedWeather.temp}°C</Text>
-                          <Text style={styles.weatherDescription}>{detailedWeather.description}</Text>
+                      {/* 메인 날씨 정보 */}
+                      <View style={styles.mainWeatherInfo}>
+                        <View style={styles.weatherIconContainer}>
+                          <Text style={styles.mainWeatherIcon}>{getWeatherIcon(detailedWeather.condition)}</Text>
+                        </View>
+                        <View style={styles.weatherDetailsContainer}>
+                          <View style={styles.mainTempContainer}>
+                            <Text style={styles.mainTemperature}>{detailedWeather.temp}°</Text>
+                            <Text style={styles.weatherCondition}>{getSimpleWeatherDescription(detailedWeather.condition, detailedWeather.description)}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.additionalInfo}>
+                          <Text style={styles.feelsLike}>체감온도 {detailedWeather.feelsLike}°</Text>
+                          <Text style={styles.humidity}>습도 {detailedWeather.humidity}%</Text>
+                          <Text style={styles.airQuality}>
+                            미세{' '}
+                            <Text style={{ color: airQuality ? getAirQualityLevel(airQuality.pm10, 'pm10').color : '#666' }}>
+                              {airQuality ? getAirQualityLevel(airQuality.pm10, 'pm10').text : '정보없음'}
+                            </Text>
+                          </Text>
+                          <Text style={styles.ultraFineDust}>
+                            초미세{' '}
+                            <Text style={{ color: airQuality ? getAirQualityLevel(airQuality.pm25, 'pm25').color : '#666' }}>
+                              {airQuality ? getAirQualityLevel(airQuality.pm25, 'pm25').text : '정보없음'}
+                            </Text>
+                          </Text>
                         </View>
                       </View>
                       
-                      <View style={styles.weatherDetailGrid}>
-                        <View style={styles.weatherDetailItem}>
-                          <Text style={styles.weatherDetailLabel}>체감온도</Text>
-                          <Text style={styles.weatherDetailValue}>{detailedWeather.feelsLike}°C</Text>
-                        </View>
-                        <View style={styles.weatherDetailItem}>
-                          <Text style={styles.weatherDetailLabel}>습도</Text>
-                          <Text style={styles.weatherDetailValue}>{detailedWeather.humidity}%</Text>
-                        </View>
-                        <View style={styles.weatherDetailItem}>
-                          <Text style={styles.weatherDetailLabel}>풍속</Text>
-                          <Text style={styles.weatherDetailValue}>{detailedWeather.windSpeed} km/h</Text>
-                        </View>
-                        <View style={styles.weatherDetailItem}>
-                          <Text style={styles.weatherDetailLabel}>기압</Text>
-                          <Text style={styles.weatherDetailValue}>{detailedWeather.pressure} hPa</Text>
-                        </View>
-                        <View style={styles.weatherDetailItem}>
-                          <Text style={styles.weatherDetailLabel}>가시거리</Text>
-                          <Text style={styles.weatherDetailValue}>{detailedWeather.visibility} km</Text>
-                        </View>
+                      {/* 탭 메뉴 */}
+                      <View style={styles.tabContainer}>
+                        <TouchableOpacity 
+                          style={[styles.tab, activeTab === 'hourly' && styles.activeTab]}
+                          onPress={() => {
+                            setActiveTab('hourly');
+                            // 시간대별로 전환할 때만 리셋
+                            setTimeout(() => {
+                              hourlyScrollRef.current?.scrollTo({ x: 0, animated: false });
+                            }, 0);
+                          }}
+                        >
+                          <Text style={[styles.tabText, activeTab === 'hourly' && styles.activeTabText]}>시간대별</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={[styles.tab, activeTab === 'daily' && styles.activeTab]}
+                          onPress={() => {
+                            setActiveTab('daily');
+                            // 일별로 전환할 때만 리셋
+                            setTimeout(() => {
+                              dailyScrollRef.current?.scrollTo({ x: 0, animated: false });
+                            }, 0);
+                          }}
+                        >
+                          <Text style={[styles.tabText, activeTab === 'daily' && styles.activeTabText]}>일별</Text>
+                        </TouchableOpacity>
                       </View>
                       
+                      {/* 예보 컨텐츠 */}
+                      {activeTab === 'hourly' ? (
+                        <ScrollView 
+                          ref={hourlyScrollRef}
+                          horizontal 
+                          showsHorizontalScrollIndicator={false} 
+                          style={styles.forecastContainer}
+                          contentContainerStyle={styles.forecastContent}
+                        >
+                          {hourlyForecast.map((hour, index) => (
+                            <View key={index} style={[styles.hourlyItem, index === hourlyForecast.length - 1 && { marginRight: 0 }]}>
+                              <Text style={styles.hourText}>{hour.time}</Text>
+                              <Text style={styles.hourIcon}>{getWeatherIcon(hour.condition)}</Text>
+                              <Text style={styles.hourTemp}>{hour.temp}°</Text>
+                            </View>
+                          ))}
+                        </ScrollView>
+                      ) : (
+                        <ScrollView 
+                          ref={dailyScrollRef}
+                          horizontal 
+                          showsHorizontalScrollIndicator={false} 
+                          style={styles.forecastContainer}
+                          contentContainerStyle={styles.forecastContent}
+                        >
+                          {dailyForecast.map((day, index) => (
+                            <View key={index} style={[styles.dailyItem, index === dailyForecast.length - 1 && { marginRight: 0 }]}>
+                              <Text style={styles.dayText}>{day.date}</Text>
+                              <Text style={styles.dayIcon}>{getWeatherIcon(day.condition)}</Text>
+                              <View style={styles.tempRange}>
+                                <Text style={styles.minTemp}>{day.minTemp}°</Text>
+                                <Text style={styles.tempSeparator}>/</Text>
+                                <Text style={styles.maxTemp}>{day.maxTemp}°</Text>
+                              </View>
+                            </View>
+                          ))}
+                        </ScrollView>
+                      )}
+                      
+                      {/* 일출/일몰 시간 */}
                       <View style={styles.sunTimesContainer}>
-                        <Text style={styles.sunTimesTitle}>🌅 일출/일몰 시간</Text>
-                        <View style={styles.sunTimesGrid}>
-                          <View style={styles.sunTimeItem}>
-                            <Text style={styles.sunTimeIcon}>🌅</Text>
+                        <View style={styles.sunTimeItem}>
+                          <View style={styles.sunTimeInfo}>
                             <Text style={styles.sunTimeLabel}>일출</Text>
                             <Text style={styles.sunTimeValue}>{detailedWeather.sunrise}</Text>
                           </View>
-                          <View style={styles.sunTimeItem}>
-                            <Text style={styles.sunTimeIcon}>🌇</Text>
+                        </View>
+                        <View style={styles.sunTimeDivider} />
+                        <View style={styles.sunTimeItem}>
+                          <View style={styles.sunTimeInfo}>
                             <Text style={styles.sunTimeLabel}>일몰</Text>
                             <Text style={styles.sunTimeValue}>{detailedWeather.sunset}</Text>
                           </View>
                         </View>
                       </View>
+                      
                     </View>
                   )}
                 </>
@@ -386,87 +618,213 @@ const styles = StyleSheet.create({
     color: '#333',
     textAlign: 'center',
     lineHeight: 10,
+    marginLeft: 4,
   },
-  weatherMainInfo: {
-    flexDirection: 'row',
+  // 카카오맵 스타일 날씨 UI
+  weatherHeader: {
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
+    paddingBottom: 16,
+    marginTop: -16,
+  },
+  headerDivider: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginBottom: 20,
+  },
+  locationTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    textAlign: 'center',
+  },
+  mainWeatherInfo: {
+    backgroundColor: 'white',
     padding: 20,
     borderRadius: 16,
-    marginBottom: 24,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  weatherMainIcon: {
-    fontSize: 40,
+  weatherIconContainer: {
     marginRight: 16,
   },
-  weatherMainTemp: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1a1a1a',
+  mainWeatherIcon: {
+    fontSize: 56,
+  },
+  weatherDetailsContainer: {
+    flex: 1,
+    marginRight: 16,
+  },
+  mainTempContainer: {
     marginBottom: 4,
   },
-  weatherDescription: {
+  mainTemperature: {
+    fontSize: 40,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 2,
+  },
+  weatherCondition: {
     fontSize: 14,
     color: '#666',
     textTransform: 'capitalize',
   },
-  weatherDetailGrid: {
+  additionalInfo: {
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    minWidth: 80,
+  },
+  feelsLike: {
+    fontSize: 11,
+    color: '#1a1a1a',
+    fontWeight: '500',
+    marginBottom: 3,
+    textAlign: 'left',
+  },
+  humidity: {
+    fontSize: 11,
+    color: '#1a1a1a',
+    fontWeight: '500',
+    marginBottom: 3,
+    textAlign: 'left',
+  },
+  airQuality: {
+    fontSize: 11,
+    color: '#1a1a1a',
+    fontWeight: '500',
+    marginBottom: 3,
+    textAlign: 'left',
+  },
+  ultraFineDust: {
+    fontSize: 11,
+    color: '#1a1a1a',
+    fontWeight: '500',
+    textAlign: 'left',
+  },
+  tabContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 24,
-    gap: 12,
+    marginBottom: 20,
+    marginTop: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  weatherDetailItem: {
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e1e1e1',
-    width: '48%',
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
     alignItems: 'center',
+    position: 'relative',
   },
-  weatherDetailLabel: {
-    fontSize: 12,
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#1a1a1a',
+  },
+  tabText: {
+    fontSize: 15,
     color: '#666',
-    marginBottom: 4,
+    fontWeight: '500',
   },
-  weatherDetailValue: {
-    fontSize: 16,
+  activeTabText: {
+    color: '#1a1a1a',
+    fontWeight: '600',
+  },
+  forecastContainer: {
+    marginBottom: 16,
+  },
+  hourlyItem: {
+    alignItems: 'center',
+    marginRight: 20,
+    paddingVertical: 8,
+    minWidth: 50,
+  },
+  hourText: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  hourIcon: {
+    fontSize: 28,
+    marginBottom: 8,
+  },
+  hourTemp: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#1a1a1a',
   },
-  sunTimesContainer: {
-    backgroundColor: '#f8f9fa',
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 16,
+  dailyItem: {
+    alignItems: 'center',
+    marginRight: 20,
+    paddingVertical: 8,
+    minWidth: 70,
   },
-  sunTimesTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginBottom: 16,
+  dayText: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 8,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  dayIcon: {
+    fontSize: 28,
+    marginBottom: 8,
     textAlign: 'center',
   },
-  sunTimesGrid: {
+  tempRange: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  minTemp: {
+    fontSize: 13,
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  tempSeparator: {
+    fontSize: 13,
+    color: '#666',
+    marginHorizontal: 3,
+  },
+  maxTemp: {
+    fontSize: 13,
+    color: '#FF3B30',
+    fontWeight: '600',
+  },
+  sunTimesContainer: {
+    backgroundColor: 'white',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sunTimeItem: {
+    flex: 1,
     alignItems: 'center',
   },
-  sunTimeIcon: {
-    fontSize: 24,
-    marginBottom: 8,
+  sunTimeInfo: {
+    alignItems: 'center',
+  },
+  sunTimeDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: '#e1e1e1',
+    marginHorizontal: 24,
   },
   sunTimeLabel: {
     fontSize: 12,
     color: '#666',
     marginBottom: 4,
+    fontWeight: '500',
   },
   sunTimeValue: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     color: '#1a1a1a',
   },
   bottomSheetContainer: {
