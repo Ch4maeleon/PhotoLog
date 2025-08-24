@@ -46,6 +46,21 @@ export default function HomeScreen() {
   const [originalMarkerPosition, setOriginalMarkerPosition] = useState<{latitude: number, longitude: number} | null>(null);
   const [isMarkerInDeleteZone, setIsMarkerInDeleteZone] = useState(false);
   const [currentSheetIndex, setCurrentSheetIndex] = useState(-1);
+  const [weather, setWeather] = useState<{temp: number, condition: string} | null>(null);
+  const [detailedWeather, setDetailedWeather] = useState<{
+    temp: number;
+    condition: string;
+    feelsLike: number;
+    humidity: number;
+    windSpeed: number;
+    windDirection: number;
+    pressure: number;
+    visibility: number;
+    sunrise: string;
+    sunset: string;
+    description: string;
+  } | null>(null);
+  const [showWeatherDetails, setShowWeatherDetails] = useState(false);
   const tabBarHeight = useBottomTabBarHeight();
   
   const bottomSheetRef = useRef<BottomSheet>(null);
@@ -73,6 +88,52 @@ export default function HomeScreen() {
 
   const [mapRegion, setMapRegion] = useState(currentRegion);
 
+  const fetchWeather = useCallback(async (lat: number, lng: number) => {
+    try {
+      const API_KEY = '6a912e0ef1cab73570c17e15c0feab5d';
+      const response = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&appid=${API_KEY}&units=metric&lang=kr`
+      );
+      
+      if (!response.ok) {
+        throw new Error('Weather API failed');
+      }
+      
+      const data = await response.json();
+      
+      const formatTime = (timestamp: number) => {
+        return new Date(timestamp * 1000).toLocaleTimeString('ko-KR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+      };
+      
+      setWeather({
+        temp: Math.round(data.main.temp),
+        condition: data.weather[0].main
+      });
+      
+      setDetailedWeather({
+        temp: Math.round(data.main.temp),
+        condition: data.weather[0].main,
+        feelsLike: Math.round(data.main.feels_like),
+        humidity: data.main.humidity,
+        windSpeed: Math.round(data.wind?.speed * 3.6) || 0,
+        windDirection: data.wind?.deg || 0,
+        pressure: data.main.pressure,
+        visibility: Math.round((data.visibility || 10000) / 1000),
+        sunrise: formatTime(data.sys.sunrise),
+        sunset: formatTime(data.sys.sunset),
+        description: data.weather[0].description
+      });
+    } catch (error) {
+      console.log('Weather fetch failed:', error);
+      setWeather(null);
+      setDetailedWeather(null);
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
@@ -84,11 +145,12 @@ export default function HomeScreen() {
 
         let location = await Location.getCurrentPositionAsync({});
         setLocation(location);
+        fetchWeather(location.coords.latitude, location.coords.longitude);
       } catch (error) {
         console.error('Error getting location:', error);
       }
     })();
-  }, []);
+  }, [fetchWeather]);
 
 
   const superCluster = useMemo(() => new SuperCluster({
@@ -242,11 +304,29 @@ export default function HomeScreen() {
       setSelectedImages([]);
       setMarkerTitle('');
       setMarkerDescription('');
+      setShowWeatherDetails(false);
     }
   }, []);
 
+  const handleWeatherPress = useCallback(() => {
+    if (!detailedWeather) return;
+    
+    setIsAddingMarker(false);
+    setIsEditingMarker(false);
+    setSelectedMarker(null);
+    setPendingCoordinate(null);
+    setShowWeatherDetails(true);
+    bottomSheetRef.current?.snapToIndex(1);
+  }, [detailedWeather]);
+
 
   const handleHandlePress = useCallback(() => {
+    if (showWeatherDetails) {
+      // 날씨 정보 표시 시에는 핸들바 클릭으로 바로 닫기
+      bottomSheetRef.current?.close();
+      return;
+    }
+    
     if (currentSheetIndex === 0) {
       // 13% 상태에서 핸들바 클릭 시 75%로 확장
       bottomSheetRef.current?.snapToIndex(1);
@@ -254,7 +334,7 @@ export default function HomeScreen() {
       // 75% 상태에서 핸들바 클릭 시 13%로 축소
       bottomSheetRef.current?.snapToIndex(0);
     }
-  }, [currentSheetIndex]);
+  }, [currentSheetIndex, showWeatherDetails]);
 
 
 
@@ -375,8 +455,11 @@ export default function HomeScreen() {
     if (isAddingMarker || isEditingMarker || selectedMarker) {
       // 바텀시트가 열린 상태(추가/편집/정보보기)에서 지도 클릭 시 20%로 축소
       bottomSheetRef.current?.snapToIndex(0);
+    } else if (showWeatherDetails) {
+      // 날씨 정보가 열린 상태에서 지도 클릭 시 바로 닫기
+      bottomSheetRef.current?.close();
     }
-  }, [isAddingMarker, isEditingMarker, selectedMarker]);
+  }, [isAddingMarker, isEditingMarker, selectedMarker, showWeatherDetails]);
 
   const handleEditMarker = useCallback(() => {
     if (!selectedMarker) return;
@@ -443,6 +526,21 @@ export default function HomeScreen() {
     bottomSheetRef.current?.close();
   }, []);
 
+  const getWeatherIcon = (condition: string) => {
+    switch (condition.toLowerCase()) {
+      case 'clear': return '☀️';
+      case 'clouds': return '☁️';
+      case 'rain': return '🌧️';
+      case 'drizzle': return '🌦️';
+      case 'thunderstorm': return '⛈️';
+      case 'snow': return '❄️';
+      case 'mist':
+      case 'fog':
+      case 'haze': return '🌫️';
+      default: return '🌤️';
+    }
+  };
+
   return (
     <GestureHandlerRootView style={styles.container}>
       <View style={styles.header}>
@@ -455,6 +553,21 @@ export default function HomeScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+      
+      {weather && !showWeatherDetails && (
+        <View style={styles.weatherContainer}>
+          <TouchableOpacity 
+            style={styles.weatherWidget} 
+            onPress={handleWeatherPress}
+            activeOpacity={0.7}
+            delayPressIn={0}
+            delayPressOut={100}
+          >
+            <Text style={styles.weatherIcon}>{getWeatherIcon(weather.condition)}</Text>
+            <Text style={styles.weatherTemp}>{weather.temp}°</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       
       {isEditMode && isDraggingMarker && (
         <View style={styles.deleteZone}>
@@ -619,7 +732,18 @@ export default function HomeScreen() {
         maxDynamicContentSize={0.75}
         animateOnMount={true}
         onAnimate={(fromIndex, toIndex) => {
-          // 75%에서 바로 닫히려고 할 때 13%로 강제 이동
+          // 날씨 정보일 때는 13%에서 걸리지 않고 바로 닫기
+          if (showWeatherDetails) {
+            // 날씨 모드에서 13%로 가려고 하면 바로 닫기
+            if (toIndex === 0) {
+              setTimeout(() => {
+                bottomSheetRef.current?.close();
+              }, 0);
+            }
+            return;
+          }
+          
+          // 75%에서 바로 닫히려고 할 때 13%로 강제 이동 (스팟 추가/편집 시만)
           if (fromIndex === 1 && toIndex === -1) {
             setTimeout(() => {
               bottomSheetRef.current?.snapToIndex(0);
@@ -644,8 +768,62 @@ export default function HomeScreen() {
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled={true}
           >
-            <View style={styles.sheetContent}>
-              {isAddingMarker ? (
+            <View style={[styles.sheetContent, showWeatherDetails && { paddingBottom: tabBarHeight + 5 }]}>
+              {showWeatherDetails ? (
+                <>
+                  <Text style={styles.title}>날씨 정보</Text>
+                  {detailedWeather && (
+                    <View>
+                      <View style={styles.weatherMainInfo}>
+                        <Text style={styles.weatherMainIcon}>{getWeatherIcon(detailedWeather.condition)}</Text>
+                        <View>
+                          <Text style={styles.weatherMainTemp}>{detailedWeather.temp}°C</Text>
+                          <Text style={styles.weatherDescription}>{detailedWeather.description}</Text>
+                        </View>
+                      </View>
+                      
+                      <View style={styles.weatherDetailGrid}>
+                        <View style={styles.weatherDetailItem}>
+                          <Text style={styles.weatherDetailLabel}>체감온도</Text>
+                          <Text style={styles.weatherDetailValue}>{detailedWeather.feelsLike}°C</Text>
+                        </View>
+                        <View style={styles.weatherDetailItem}>
+                          <Text style={styles.weatherDetailLabel}>습도</Text>
+                          <Text style={styles.weatherDetailValue}>{detailedWeather.humidity}%</Text>
+                        </View>
+                        <View style={styles.weatherDetailItem}>
+                          <Text style={styles.weatherDetailLabel}>풍속</Text>
+                          <Text style={styles.weatherDetailValue}>{detailedWeather.windSpeed} km/h</Text>
+                        </View>
+                        <View style={styles.weatherDetailItem}>
+                          <Text style={styles.weatherDetailLabel}>기압</Text>
+                          <Text style={styles.weatherDetailValue}>{detailedWeather.pressure} hPa</Text>
+                        </View>
+                        <View style={styles.weatherDetailItem}>
+                          <Text style={styles.weatherDetailLabel}>가시거리</Text>
+                          <Text style={styles.weatherDetailValue}>{detailedWeather.visibility} km</Text>
+                        </View>
+                      </View>
+                      
+                      <View style={styles.sunTimesContainer}>
+                        <Text style={styles.sunTimesTitle}>🌅 일출/일몰 시간</Text>
+                        <View style={styles.sunTimesGrid}>
+                          <View style={styles.sunTimeItem}>
+                            <Text style={styles.sunTimeIcon}>🌅</Text>
+                            <Text style={styles.sunTimeLabel}>일출</Text>
+                            <Text style={styles.sunTimeValue}>{detailedWeather.sunrise}</Text>
+                          </View>
+                          <View style={styles.sunTimeItem}>
+                            <Text style={styles.sunTimeIcon}>🌇</Text>
+                            <Text style={styles.sunTimeLabel}>일몰</Text>
+                            <Text style={styles.sunTimeValue}>{detailedWeather.sunset}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </>
+              ) : isAddingMarker ? (
                 <>
                   <Text style={styles.title}>새 출사 스팟 추가</Text>
                   <View style={styles.inputContainer}>
@@ -1270,5 +1448,120 @@ const styles = StyleSheet.create({
     height: 4,
     backgroundColor: '#D1D5DB',
     borderRadius: 2,
+  },
+  weatherContainer: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 180 : 160,
+    right: 10,
+    zIndex: 1,
+  },
+  weatherWidget: {
+    width: 56,
+    height: 56,
+    backgroundColor: 'white',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    transform: [{ scale: 1 }],
+  },
+  weatherIcon: {
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  weatherTemp: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#333',
+    textAlign: 'center',
+    lineHeight: 10,
+  },
+  weatherMainInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 24,
+  },
+  weatherMainIcon: {
+    fontSize: 40,
+    marginRight: 16,
+  },
+  weatherMainTemp: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 4,
+  },
+  weatherDescription: {
+    fontSize: 14,
+    color: '#666',
+    textTransform: 'capitalize',
+  },
+  weatherDetailGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 24,
+    gap: 12,
+  },
+  weatherDetailItem: {
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e1e1e1',
+    width: '48%',
+    alignItems: 'center',
+  },
+  weatherDetailLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  weatherDetailValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  sunTimesContainer: {
+    backgroundColor: '#f8f9fa',
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  sunTimesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  sunTimesGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  sunTimeItem: {
+    alignItems: 'center',
+  },
+  sunTimeIcon: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  sunTimeLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  sunTimeValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
   },
 });
