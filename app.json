@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "photolog",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
       "config": {

@@ -32,6 +32,12 @@ export default function TabLayout() {
           title: 'Home',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
         }}
+        listeners={{
+          tabPress: () => {
+            // 전역 이벤트로 홈 탭 클릭 알림
+            global.homeTabPressed?.();
+          },
+        }}
       />
     </Tabs>
   );

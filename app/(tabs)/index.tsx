@@ -62,6 +62,7 @@ export default function HomeScreen() {
   } | null>(null);
   const [showWeatherDetails, setShowWeatherDetails] = useState(false);
   const [tempWeatherMarker, setTempWeatherMarker] = useState<{latitude: number, longitude: number} | null>(null);
+  const [isResettingToHome, setIsResettingToHome] = useState(false);
   const tabBarHeight = useBottomTabBarHeight();
   
   const bottomSheetRef = useRef<BottomSheet>(null);
@@ -136,6 +137,70 @@ export default function HomeScreen() {
       setDetailedWeather(null);
     }
   }, []);
+
+  const resetToHome = useCallback(async () => {
+    // 홈으로 리셋 중임을 표시
+    setIsResettingToHome(true);
+    
+    // 바텀시트를 강제로 닫기 (여러 번 시도)
+    bottomSheetRef.current?.close();
+    bottomSheetRef.current?.snapToIndex(-1);
+    
+    // 즉시 상태 초기화
+    setCurrentSheetIndex(-1);
+    setIsAddingMarker(false);
+    setIsEditingMarker(false);
+    setSelectedMarker(null);
+    setPendingCoordinate(null);
+    setMarkerTitle('');
+    setMarkerDescription('');
+    setSelectedImages([]);
+    setSelectedCategory('');
+    setSelectedTimes([]);
+    setSelectedDifficulty(1);
+    setIsEditMode(false);
+    setIsDraggingMarker(false);
+    setDraggedMarkerId(null);
+    setOriginalMarkerPosition(null);
+    setIsMarkerInDeleteZone(false);
+    setShowWeatherDetails(false);
+    setTempWeatherMarker(null);
+    
+    // 다시 한 번 바텀시트 닫기 시도
+    setTimeout(() => {
+      bottomSheetRef.current?.close();
+      setIsResettingToHome(false);
+    }, 50);
+    
+    // 한 번 더 확실하게 닫기
+    setTimeout(() => {
+      bottomSheetRef.current?.close();
+    }, 150);
+    
+    // 현재 위치로 이동
+    if (location) {
+      const currentRegion = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+      
+      mapRef.current?.animateToRegion(currentRegion, 1000);
+      fetchWeather(location.coords.latitude, location.coords.longitude);
+    }
+  }, [location, fetchWeather]);
+
+  // 홈 탭 클릭 시 모든 동작 취소하고 현재 위치로 이동
+  useEffect(() => {
+    global.homeTabPressed = () => {
+      resetToHome();
+    };
+
+    return () => {
+      global.homeTabPressed = undefined;
+    };
+  }, [resetToHome]);
 
   useEffect(() => {
     (async () => {
@@ -344,20 +409,23 @@ export default function HomeScreen() {
 
 
   const handleSheetChanges = useCallback((index: number) => {
-    setCurrentSheetIndex(index);
-    
-    if (index === -1) {
-      setIsAddingMarker(false);
-      setIsEditingMarker(false);
-      setPendingCoordinate(null);
-      setSelectedMarker(null);
-      setSelectedImages([]);
-      setMarkerTitle('');
-      setMarkerDescription('');
-      setShowWeatherDetails(false);
-      setTempWeatherMarker(null);
+    // 홈 리셋 중이 아닐 때만 상태 업데이트
+    if (!isResettingToHome) {
+      setCurrentSheetIndex(index);
+      
+      if (index === -1) {
+        setIsAddingMarker(false);
+        setIsEditingMarker(false);
+        setPendingCoordinate(null);
+        setSelectedMarker(null);
+        setSelectedImages([]);
+        setMarkerTitle('');
+        setMarkerDescription('');
+        setShowWeatherDetails(false);
+        setTempWeatherMarker(null);
+      }
     }
-  }, []);
+  }, [isResettingToHome]);
 
   const handleWeatherPress = useCallback(() => {
     if (!detailedWeather) return;
@@ -843,11 +911,16 @@ export default function HomeScreen() {
         index={-1}
         snapPoints={snapPoints}
         onChange={handleSheetChanges}
-        enablePanDownToClose={true}
+        enablePanDownToClose={!isResettingToHome}
         enableDynamicSizing={false}
         maxDynamicContentSize={0.75}
-        animateOnMount={true}
+        animateOnMount={!isResettingToHome}
         onAnimate={(fromIndex, toIndex) => {
+          // 홈으로 리셋 중일 때는 모든 애니메이션 로직을 무시하고 바로 닫기
+          if (isResettingToHome) {
+            return;
+          }
+          
           // 날씨 정보일 때는 13%에서 걸리지 않고 바로 닫기
           if (showWeatherDetails) {
             // 날씨 모드에서 13%로 가려고 하면 바로 닫기
