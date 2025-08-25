@@ -542,7 +542,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: Platform.OS === 'ios' ? 44 : 24, 
+    paddingTop: 0,
   },
   map: {
     flex: 1,
