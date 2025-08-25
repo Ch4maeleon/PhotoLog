@@ -474,7 +474,6 @@ export default function HomeScreen() {
                           horizontal 
                           showsHorizontalScrollIndicator={false} 
                           style={styles.forecastContainer}
-                          contentContainerStyle={styles.forecastContent}
                         >
                           {hourlyForecast.map((hour, index) => (
                             <View key={index} style={[styles.hourlyItem, index === hourlyForecast.length - 1 && { marginRight: 0 }]}>
@@ -490,7 +489,6 @@ export default function HomeScreen() {
                           horizontal 
                           showsHorizontalScrollIndicator={false} 
                           style={styles.forecastContainer}
-                          contentContainerStyle={styles.forecastContent}
                         >
                           {dailyForecast.map((day, index) => (
                             <View key={index} style={[styles.dailyItem, index === dailyForecast.length - 1 && { marginRight: 0 }]}>
