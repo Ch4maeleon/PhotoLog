@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
+import { naverMapStyle } from '@/constants/mapStyles';
 
 export default function HomeScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
@@ -357,6 +358,7 @@ export default function HomeScreen() {
         ref={mapRef}
         style={[styles.map, { marginBottom: tabBarHeight }]}
         provider={PROVIDER_GOOGLE}
+        customMapStyle={naverMapStyle}
         region={currentRegion}
         showsUserLocation={true}
         showsMyLocationButton={true}
