@@ -1,21 +1,12 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform } from 'react-native';
-import Icon from 'react-native-vector-icons/FontAwesome5';
-
-import { HapticTab } from '@/components/HapticTab';
-import TabBarBackground from '@/components/ui/TabBarBackground';
 import CustomTabBar from '@/components/ui/CustomTabBar';
-import { Colors } from '@/constants/Colors';
-import { useColorScheme } from '@/hooks/useColorScheme';
 
 declare global {
   var homeTabPressed: (() => void) | undefined;
 }
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       tabBar={(props) => <CustomTabBar {...props} />}

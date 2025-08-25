@@ -22,7 +22,7 @@ const CustomTabBar: React.FC<TabBarProps> = ({ state, descriptors, navigation })
       tension: 100,
       friction: 8,
     }).start();
-  }, [state.index, tabWidth]);
+  }, [state.index, tabWidth, animatedValue]);
 
   const getIconName = (routeName: string) => {
     switch (routeName) {
@@ -71,7 +71,6 @@ const CustomTabBar: React.FC<TabBarProps> = ({ state, descriptors, navigation })
       />
       
       {state.routes.map((route: any, index: number) => {
-        const { options } = descriptors[route.key];
         const isFocused = state.index === index;
 
         const onPress = () => {
