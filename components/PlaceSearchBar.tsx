@@ -46,13 +46,9 @@ export default function PlaceSearchBar({
   const animatedHeight = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Google Places API를 사용한 장소 검색
   const searchPlaces = async (query: string): Promise<SearchResult[]> => {
     if (query.length < 2) return [];
     
-    console.log('Searching for:', query);
-    
-    // Mock 데이터 (API 실패시 fallback)
     const mockResults: SearchResult[] = [
       {
         id: '1',
@@ -104,21 +100,17 @@ export default function PlaceSearchBar({
         `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${API_KEY}&language=ko&region=kr`
       );
       
-      console.log('API response status:', response.status);
-      
       if (!response.ok) {
         throw new Error(`Places search failed: ${response.status}`);
       }
       
       const data = await response.json();
-      console.log('API response data:', data);
       
       if (data.status !== 'OK') {
-        console.warn('API returned status:', data.status);
         return mockResults;
       }
       
-      const apiResults = data.results.slice(0, 5).map((place: any) => ({
+      return data.results.slice(0, 5).map((place: any) => ({
         id: place.place_id,
         name: place.name,
         address: place.formatted_address,
@@ -126,28 +118,20 @@ export default function PlaceSearchBar({
         latitude: place.geometry.location.lat,
         longitude: place.geometry.location.lng,
       }));
-      
-      console.log('API search results:', apiResults);
-      return apiResults;
     } catch (error) {
-      console.error('Search error, using mock data:', error);
       return mockResults;
     }
   };
 
   const handleSearchTextChange = async (text: string) => {
     setSearchText(text);
-    console.log('Search text changed:', text);
     
     if (text.trim().length >= 2) {
-      console.log('Starting search for:', text.trim());
       const results = await searchPlaces(text.trim());
-      console.log('Search results:', results);
       setSearchResults(results);
       setShowResults(true);
       animateResultsShow();
     } else {
-      console.log('Clearing search results');
       setSearchResults([]);
       setShowResults(false);
       animateResultsHide();
@@ -155,8 +139,7 @@ export default function PlaceSearchBar({
   };
 
   const animateResultsShow = () => {
-    const targetHeight = 240; // 고정 높이로 테스트
-    console.log('Animating results show with height:', targetHeight, 'results count:', searchResults.length);
+    const targetHeight = 240;
     
     Animated.parallel([
       Animated.timing(animatedHeight, {
@@ -198,7 +181,6 @@ export default function PlaceSearchBar({
   };
 
   const handleBlur = () => {
-    // 결과 선택을 위한 딜레이
     setTimeout(() => {
       setIsFocused(false);
       setShowResults(false);
@@ -277,6 +259,8 @@ export default function PlaceSearchBar({
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="never"
+          numberOfLines={1}
+          multiline={false}
         />
         {searchText.length > 0 && (
           <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
@@ -285,7 +269,6 @@ export default function PlaceSearchBar({
         )}
       </View>
 
-      {/* 검색 결과 리스트 */}
       {showResults && searchResults.length > 0 && (
         <Animated.View 
           style={[
@@ -323,7 +306,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'white',
     borderRadius: 12,
-    paddingHorizontal: 16,
+    paddingLeft: 16,
+    paddingRight: 8,
     paddingVertical: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -332,6 +316,7 @@ const styles = StyleSheet.create({
     elevation: 4,
     borderWidth: 1,
     borderColor: '#e0e0e0',
+    height: 48,
   },
   focusedInput: {
     borderColor: '#007AFF',
@@ -348,7 +333,7 @@ const styles = StyleSheet.create({
     height: 20,
   },
   clearButton: {
-    padding: 4,
+    padding: 2,
     marginLeft: 8,
   },
   resultsContainer: {
