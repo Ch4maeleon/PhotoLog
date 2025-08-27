@@ -73,7 +73,7 @@ export const PLACE_CATEGORIES: PlaceCategory[] = [
   }
 ];
 
-export const DEFAULT_CATEGORIES = ['restaurant', 'cafe', 'convenience_store', 'gas_station'];
+export const DEFAULT_CATEGORIES: string[] = [];
 
 export const getCategoryByType = (types: string[]): PlaceCategory | undefined => {
   console.log('Finding category for types:', types);
