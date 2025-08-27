@@ -33,6 +33,7 @@ export default function CategoryFilter({
         horizontal 
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
         {visibleCategories.map((category, index) => {
           const isSelected = selectedCategories.includes(category.id);
@@ -47,6 +48,7 @@ export default function CategoryFilter({
               ]}
               onPress={() => toggleCategory(category.id)}
               activeOpacity={0.8}
+              delayPressIn={0}
             >
               <Text style={[
                 styles.categoryName,
@@ -62,6 +64,7 @@ export default function CategoryFilter({
           <TouchableOpacity
             style={[styles.expandButton, { marginRight: 0 }]}
             onPress={() => setIsExpanded(true)}
+            delayPressIn={0}
           >
             <Text style={styles.expandButtonText}>더보기 +</Text>
           </TouchableOpacity>
@@ -73,6 +76,7 @@ export default function CategoryFilter({
           <TouchableOpacity
             style={styles.collapseButton}
             onPress={() => setIsExpanded(false)}
+            delayPressIn={0}
           >
             <Text style={styles.collapseButtonText}>접기 ↑</Text>
           </TouchableOpacity>
