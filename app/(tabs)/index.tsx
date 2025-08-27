@@ -177,7 +177,7 @@ export default function HomeScreen() {
             });
           }
         }
-      } catch (airError) {
+      } catch {
         setAirQuality(null);
       }
       
@@ -203,10 +203,10 @@ export default function HomeScreen() {
             setCurrentLocation(locationString);
           }
         }
-      } catch (geocodeError) {
+      } catch {
       }
       
-    } catch (error) {
+    } catch {
       setWeather(null);
       setDetailedWeather(null);
       setHourlyForecast([]);
@@ -231,7 +231,7 @@ export default function HomeScreen() {
       });
       
       setPlaces(nearbyPlaces);
-    } catch (error) {
+    } catch {
       setPlaces([]);
     }
   }, [selectedCategories]);
@@ -281,7 +281,7 @@ export default function HomeScreen() {
         setLocation(location);
         fetchWeather(location.coords.latitude, location.coords.longitude);
         loadNearbyPlaces(location.coords.latitude, location.coords.longitude, DEFAULT_CATEGORIES);
-      } catch (error) {
+      } catch {
       }
     })();
   }, [fetchWeather, loadNearbyPlaces]);
@@ -359,12 +359,12 @@ export default function HomeScreen() {
       setSelectedPlace(place);
       setShowPlaceDetails(true);
     }
-  }, [showWeatherDetails, showPlaceDetails, selectedPlace]);
+  }, [showWeatherDetails, showPlaceDetails]);
 
 
   const handleCategoriesChange = useCallback((categories: string[]) => {
     setSelectedCategories(categories);
-  }, [selectedCategories]);
+  }, []);
 
   const handlePlaceDetailClose = useCallback(() => {
     setShowPlaceDetails(false);
