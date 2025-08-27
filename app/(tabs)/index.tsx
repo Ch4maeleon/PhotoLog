@@ -6,6 +6,12 @@ import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from '
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import { naverMapStyle } from '@/constants/mapStyles';
+import { Place } from '@/types/places';
+import { DEFAULT_CATEGORIES } from '@/constants/placeCategories';
+import { placesService } from '@/services/placesService';
+import PlaceMarker from '@/components/PlaceMarker';
+import CategoryFilter from '@/components/CategoryFilter';
+import PlaceDetailSheet from '@/components/PlaceDetailSheet';
 
 export default function HomeScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
@@ -38,6 +44,12 @@ export default function HomeScreen() {
   const [currentLocation, setCurrentLocation] = useState<string>('Unknown Location');
   const [airQuality, setAirQuality] = useState<{pm25: number, pm10: number, aqi: number} | null>(null);
   const [showWeatherDetails, setShowWeatherDetails] = useState(false);
+  
+  // 장소 관련 상태
+  const [places, setPlaces] = useState<Place[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
+  const [showPlaceDetails, setShowPlaceDetails] = useState(false);
   const tabBarHeight = useBottomTabBarHeight();
   
   const bottomSheetRef = useRef<BottomSheet>(null);
@@ -212,6 +224,32 @@ export default function HomeScreen() {
     }
   }, []);
 
+  // 장소 검색 함수
+  const loadNearbyPlaces = useCallback(async (lat: number, lng: number, categories: string[] = selectedCategories) => {
+    console.log('loadNearbyPlaces called with categories:', categories);
+    
+    if (categories.length === 0) {
+      console.log('No categories selected, clearing places');
+      setPlaces([]);
+      return;
+    }
+
+    try {
+      const nearbyPlaces = await placesService.searchNearbyPlaces({
+        location: { lat, lng },
+        radius: 2000,
+        categories: categories
+      });
+      
+      console.log('Places search completed, found:', nearbyPlaces.length);
+      console.log('Selected categories at time of search:', categories);
+      setPlaces(nearbyPlaces);
+    } catch (error) {
+      console.error('Failed to load places:', error);
+      setPlaces([]);
+    }
+  }, [selectedCategories]);
+
   const resetToHome = useCallback(async () => {
     // 바텀시트를 즉시 닫기
     bottomSheetRef.current?.close();
@@ -221,6 +259,8 @@ export default function HomeScreen() {
     setActiveTab('hourly');
     setCurrentLocation('Unknown Location');
     setAirQuality(null);
+    setShowPlaceDetails(false);
+    setSelectedPlace(null);
     
     // 현재 위치로 이동
     if (location) {
@@ -259,11 +299,56 @@ export default function HomeScreen() {
         let location = await Location.getCurrentPositionAsync({});
         setLocation(location);
         fetchWeather(location.coords.latitude, location.coords.longitude);
+        loadNearbyPlaces(location.coords.latitude, location.coords.longitude, DEFAULT_CATEGORIES);
       } catch (error) {
         console.error('Error getting location:', error);
       }
     })();
-  }, [fetchWeather]);
+  }, [fetchWeather, loadNearbyPlaces]);
+
+  // 이전 카테고리 추적용 ref
+  const prevCategoriesRef = useRef<string[]>(DEFAULT_CATEGORIES);
+  
+  // 카테고리 변경 시 장소 재로드 (스마트 로딩 제어)
+  useEffect(() => {
+    if (!location) return;
+    
+    const prevCategories = prevCategoriesRef.current;
+    const currentCategories = selectedCategories;
+    
+    // 새로운 카테고리가 추가된지 확인
+    const addedCategories = currentCategories.filter(cat => !prevCategories.includes(cat));
+    const removedCategories = prevCategories.filter(cat => !currentCategories.includes(cat));
+    
+    console.log('Category analysis:', {
+      added: addedCategories,
+      removed: removedCategories,
+      hasNewAdditions: addedCategories.length > 0
+    });
+    
+    if (currentCategories.length === 0) {
+      // 모든 카테고리 해제
+      console.log('All categories cleared');
+      setPlaces([]);
+    } else if (addedCategories.length > 0) {
+      // 새로운 카테고리 추가 - API 호출
+      console.log('New categories added, will search:', addedCategories);
+      const timeoutId = setTimeout(() => {
+        loadNearbyPlaces(location.coords.latitude, location.coords.longitude, currentCategories);
+      }, 300);
+      
+      return () => clearTimeout(timeoutId);
+    } else if (removedCategories.length > 0 && addedCategories.length === 0) {
+      // 카테고리 해제만 - 기존 데이터에서 필터링
+      console.log('Only categories removed, filtering existing data');
+      setPlaces(prev => prev.filter(place => 
+        place.category && currentCategories.includes(place.category.id)
+      ));
+    }
+    
+    // 이전 카테고리 업데이트
+    prevCategoriesRef.current = currentCategories;
+  }, [selectedCategories, location, loadNearbyPlaces]);
 
 
   const handleWeatherPress = useCallback(() => {
@@ -287,7 +372,61 @@ export default function HomeScreen() {
       // 날씨 정보가 열린 상태에서 지도 클릭 시 바로 닫기
       bottomSheetRef.current?.close();
     }
-  }, [showWeatherDetails]);
+    if (showPlaceDetails) {
+      setShowPlaceDetails(false);
+      setSelectedPlace(null);
+    }
+  }, [showWeatherDetails, showPlaceDetails]);
+
+  // 장소 마커 클릭 핸들러
+  const handlePlaceMarkerPress = useCallback((place: Place) => {
+    console.log('=== Place marker pressed ===');
+    console.log('Place:', place.name);
+    console.log('Current states:', {
+      showPlaceDetails: showPlaceDetails,
+      selectedPlace: selectedPlace?.name,
+      showWeatherDetails: showWeatherDetails
+    });
+    
+    // 날씨 정보가 열려있으면 닫기
+    if (showWeatherDetails) {
+      console.log('Closing weather sheet first');
+      bottomSheetRef.current?.close();
+    }
+    
+    // 기존 장소 상세 정보가 열려있으면 닫기
+    if (showPlaceDetails) {
+      console.log('Another place detail is open, closing first');
+      setShowPlaceDetails(false);
+      setSelectedPlace(null);
+      
+      // 짧은 지연 후 새로운 장소 열기
+      setTimeout(() => {
+        console.log('Opening new place after delay:', place.name);
+        setSelectedPlace(place);
+        setShowPlaceDetails(true);
+      }, 200);
+    } else {
+      // 바로 새로운 장소 열기
+      console.log('Opening place details immediately:', place.name);
+      setSelectedPlace(place);
+      setShowPlaceDetails(true);
+    }
+  }, [showWeatherDetails, showPlaceDetails, selectedPlace]);
+
+
+  // 카테고리 변경 핸들러 (단순히 상태만 업데이트)
+  const handleCategoriesChange = useCallback((categories: string[]) => {
+    console.log('Categories changed from', selectedCategories.length, 'to', categories.length);
+    setSelectedCategories(categories);
+  }, [selectedCategories]);
+
+  // 장소 상세정보 닫기
+  const handlePlaceDetailClose = useCallback(() => {
+    console.log('Place detail sheet closing');
+    setShowPlaceDetails(false);
+    setSelectedPlace(null);
+  }, []);
 
   const getWeatherIcon = (condition: string) => {
     switch (condition.toLowerCase()) {
@@ -339,6 +478,13 @@ export default function HomeScreen() {
 
   return (
     <GestureHandlerRootView style={styles.container}>
+      {/* 상단 고정 카테고리 필터 */}
+      <CategoryFilter
+        selectedCategories={selectedCategories}
+        onCategoriesChange={handleCategoriesChange}
+        isVisible={true}
+      />
+
       {weather && (
         <View style={styles.weatherContainer}>
           <TouchableOpacity 
@@ -353,6 +499,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
       )}
+      
       
       <MapView
         ref={mapRef}
@@ -372,7 +519,32 @@ export default function HomeScreen() {
         pitchEnabled={true}
         rotateEnabled={true}
         loadingEnabled={true}
+        showsPointsOfInterest={false}
+        showsBuildings={true}
+        showsIndoors={false}
+        toolbarEnabled={false}
       >
+        {/* 장소 마커들 (선택된 카테고리만 표시) */}
+        {(() => {
+          const filteredPlaces = places.filter(place => 
+            place.category && selectedCategories.includes(place.category.id)
+          );
+          console.log('Rendering markers:', {
+            totalPlaces: places.length,
+            selectedCategories: selectedCategories,
+            filteredCount: filteredPlaces.length,
+            filteredPlaces: filteredPlaces.map(p => ({ name: p.name, category: p.category?.name }))
+          });
+          
+          return filteredPlaces.map((place) => (
+            <PlaceMarker
+              key={place.place_id}
+              place={place}
+              onPress={handlePlaceMarkerPress}
+              isSelected={selectedPlace?.place_id === place.place_id}
+            />
+          ));
+        })()}
       </MapView>
       
       <View style={styles.bottomSheetContainer}>
@@ -537,6 +709,13 @@ export default function HomeScreen() {
         </BottomSheetView>
         </BottomSheet>
       </View>
+      
+      {/* 장소 상세정보 바텀시트 */}
+      <PlaceDetailSheet
+        place={selectedPlace}
+        isVisible={showPlaceDetails}
+        onClose={handlePlaceDetailClose}
+      />
     </GestureHandlerRootView>
   );
 }

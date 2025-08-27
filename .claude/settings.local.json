@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "mcp__ide__getDiagnostics",
-      "WebFetch(domain:velog.io)"
+      "WebFetch(domain:velog.io)",
+      "Bash(npm run lint)"
     ],
     "deny": [],
     "ask": []
