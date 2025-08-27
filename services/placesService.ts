@@ -35,7 +35,6 @@ class PlacesService {
 
       return placesWithDistance.sort((a, b) => (a.distance || 0) - (b.distance || 0));
     } catch (error) {
-      console.error('Places search failed:', error);
       return [];
     }
   }
@@ -75,9 +74,7 @@ class PlacesService {
 
       if (data.status === 'OK') {
         return data.results.map(place => {
-          console.log('Place:', place.name, 'Types:', place.types);
           const category = getCategoryByType(place.types);
-          console.log('Assigned category:', category?.name || 'none');
           return {
             ...place,
             category: category
@@ -87,7 +84,6 @@ class PlacesService {
 
       return [];
     } catch (error) {
-      console.error(`Category search failed for ${categoryId}:`, error);
       return [];
     }
   }
@@ -130,7 +126,6 @@ class PlacesService {
 
       return null;
     } catch (error) {
-      console.error('Place details fetch failed:', error);
       return null;
     }
   }
@@ -190,7 +185,6 @@ class PlacesService {
 
       return [];
     } catch (error) {
-      console.error('Text search failed:', error);
       return [];
     }
   }

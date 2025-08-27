@@ -11,15 +11,8 @@ interface PlaceMarkerProps {
 
 function PlaceMarker({ place, onPress, isSelected = false }: PlaceMarkerProps) {
   const handlePress = useCallback(() => {
-    console.log('>>> Marker touched:', place.name);
-    console.log('onPress callback exists:', !!onPress);
-    
-    // null 체크 및 안전한 호출
     if (onPress && place) {
-      console.log('Calling onPress for:', place.name);
       onPress(place);
-    } else {
-      console.warn('onPress callback not available or place is null');
     }
   }, [place, onPress]);
 
@@ -42,7 +35,6 @@ function PlaceMarker({ place, onPress, isSelected = false }: PlaceMarkerProps) {
         styles.markerContainer,
         isSelected && styles.selectedMarker
       ]}>
-        {/* 메인 마커 */}
         <View style={[
           styles.modernMarker,
           { backgroundColor: categoryColor },
@@ -51,13 +43,11 @@ function PlaceMarker({ place, onPress, isSelected = false }: PlaceMarkerProps) {
           <Text style={styles.modernIcon}>{categoryIcon}</Text>
         </View>
         
-        {/* 바닥 점 */}
         <View style={[
           styles.markerDot,
           { backgroundColor: categoryColor }
         ]} />
         
-        {/* 선택 효과 */}
         {isSelected && (
           <>
             <View style={[styles.pulseRing1, { borderColor: categoryColor }]} />
@@ -111,7 +101,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   selectedMarker: {
-    // 선택된 마커는 transform을 사용하지 않고 링으로 표시
   },
   selectedModernMarker: {
     borderWidth: 3,
