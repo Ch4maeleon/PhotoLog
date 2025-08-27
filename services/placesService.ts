@@ -1,4 +1,4 @@
-import { Place, PlaceDetails, PlacesSearchParams, PlacesResponse } from '@/types/places';
+import { Place, PlaceDetails, PlacesSearchParams, PlacesResponse, SearchOptions } from '@/types/places';
 import { getCategoryByType } from '@/constants/placeCategories';
 
 const GOOGLE_PLACES_API_KEY = 'AIzaSyBYYmvRNzwhr7AE_ksKDNRs9IeMQeg52IM'; // app.json의 Google Maps API 키 사용
@@ -42,7 +42,8 @@ class PlacesService {
   private async searchByCategory(
     location: { lat: number; lng: number },
     radius: number,
-    categoryId: string
+    categoryId: string,
+    maxResults: number = 60
   ): Promise<Place[]> {
     try {
       const typeMap: { [key: string]: string } = {
@@ -59,30 +60,50 @@ class PlacesService {
       };
 
       const type = typeMap[categoryId] || categoryId;
-      const url = `${this.baseUrl}/nearbysearch/json`;
-      const params = new URLSearchParams({
-        location: `${location.lat},${location.lng}`,
-        radius: radius.toString(),
-        type: type,
-        key: GOOGLE_PLACES_API_KEY,
-        language: 'ko'
-      });
+      let allResults: Place[] = [];
+      let pageToken: string | undefined;
+      let requestCount = 0;
+      const maxRequests = Math.ceil(maxResults / 20); // Google API returns max 20 per request
 
-      const response = await fetch(`${url}?${params}`);
-      const data: PlacesResponse = await response.json();
-      
-
-      if (data.status === 'OK') {
-        return data.results.map(place => {
-          const category = getCategoryByType(place.types);
-          return {
-            ...place,
-            category: category
-          };
+      do {
+        const url = `${this.baseUrl}/nearbysearch/json`;
+        const params = new URLSearchParams({
+          location: `${location.lat},${location.lng}`,
+          radius: radius.toString(),
+          type: type,
+          key: GOOGLE_PLACES_API_KEY,
+          language: 'ko'
         });
-      }
 
-      return [];
+        if (pageToken) {
+          params.append('pagetoken', pageToken);
+        }
+
+        const response = await fetch(`${url}?${params}`);
+        const data: PlacesResponse = await response.json();
+        
+        if (data.status === 'OK') {
+          const places = data.results.map(place => {
+            const category = getCategoryByType(place.types);
+            return {
+              ...place,
+              category: category
+            };
+          });
+          allResults = [...allResults, ...places];
+          pageToken = data.next_page_token;
+          requestCount++;
+          
+          // Google requires a short delay before using next_page_token
+          if (pageToken && requestCount < maxRequests && allResults.length < maxResults) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } else {
+          break;
+        }
+      } while (pageToken && requestCount < maxRequests && allResults.length < maxResults);
+
+      return allResults.slice(0, maxResults);
     } catch (error) {
       return [];
     }
@@ -153,37 +174,58 @@ class PlacesService {
   }
 
   // 텍스트 검색
-  async searchPlacesByText(query: string, location?: { lat: number; lng: number }): Promise<Place[]> {
+  async searchPlacesByText(query: string, location?: { lat: number; lng: number }, maxResults: number = 20): Promise<Place[]> {
     try {
-      const url = `${this.baseUrl}/textsearch/json`;
-      const params = new URLSearchParams({
-        query: query,
-        key: GOOGLE_PLACES_API_KEY,
-        language: 'ko'
-      });
+      let allResults: Place[] = [];
+      let pageToken: string | undefined;
+      let requestCount = 0;
+      const maxRequests = Math.ceil(maxResults / 20); // Google API returns max 20 per request
 
-      if (location) {
-        params.append('location', `${location.lat},${location.lng}`);
-        params.append('radius', '5000');
-      }
+      do {
+        const url = `${this.baseUrl}/textsearch/json`;
+        const params = new URLSearchParams({
+          query: query,
+          key: GOOGLE_PLACES_API_KEY,
+          language: 'ko'
+        });
 
-      const response = await fetch(`${url}?${params}`);
-      const data: PlacesResponse = await response.json();
+        if (location) {
+          params.append('location', `${location.lat},${location.lng}`);
+          params.append('radius', '5000');
+        }
 
-      if (data.status === 'OK') {
-        return data.results.map(place => ({
-          ...place,
-          category: getCategoryByType(place.types),
-          distance: location ? this.calculateDistance(
-            location.lat,
-            location.lng,
-            place.geometry.location.lat,
-            place.geometry.location.lng
-          ) : undefined
-        }));
-      }
+        if (pageToken) {
+          params.append('pagetoken', pageToken);
+        }
 
-      return [];
+        const response = await fetch(`${url}?${params}`);
+        const data: PlacesResponse = await response.json();
+
+        if (data.status === 'OK') {
+          const places = data.results.map(place => ({
+            ...place,
+            category: getCategoryByType(place.types),
+            distance: location ? this.calculateDistance(
+              location.lat,
+              location.lng,
+              place.geometry.location.lat,
+              place.geometry.location.lng
+            ) : undefined
+          }));
+          allResults = [...allResults, ...places];
+          pageToken = data.next_page_token;
+          requestCount++;
+          
+          // Google requires a short delay before using next_page_token
+          if (pageToken && requestCount < maxRequests && allResults.length < maxResults) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } else {
+          break;
+        }
+      } while (pageToken && requestCount < maxRequests && allResults.length < maxResults);
+
+      return allResults.slice(0, maxResults);
     } catch (error) {
       return [];
     }

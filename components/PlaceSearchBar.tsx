@@ -111,28 +111,31 @@ const PlaceSearchBar = forwardRef<PlaceSearchBarRef, PlaceSearchBarProps>(({
 
     try {
       const API_KEY = 'AIzaSyBYYmvRNzwhr7AE_ksKDNRs9IeMQeg52IM';
+      
       const response = await fetch(
         `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${API_KEY}&language=ko&region=kr`
       );
       
       if (!response.ok) {
-        throw new Error(`Places search failed: ${response.status}`);
+        return mockResults;
       }
       
       const data = await response.json();
       
-      if (data.status !== 'OK') {
+      if (data.status === 'OK' && data.results) {
+        const results = data.results.map((place: any) => ({
+          id: place.place_id,
+          name: place.name,
+          address: place.formatted_address,
+          category: place.types?.[0] || 'general',
+          latitude: place.geometry.location.lat,
+          longitude: place.geometry.location.lng,
+        }));
+        
+        return results;
+      } else {
         return mockResults;
       }
-      
-      return data.results.slice(0, 5).map((place: any) => ({
-        id: place.place_id,
-        name: place.name,
-        address: place.formatted_address,
-        category: place.types?.[0] || 'general',
-        latitude: place.geometry.location.lat,
-        longitude: place.geometry.location.lng,
-      }));
     } catch (error) {
       return mockResults;
     }
@@ -144,8 +147,28 @@ const PlaceSearchBar = forwardRef<PlaceSearchBarRef, PlaceSearchBarProps>(({
     if (text.trim().length >= 2) {
       const results = await searchPlaces(text.trim());
       setSearchResults(results);
-      setShowResults(true);
-      animateResultsShow();
+      
+      if (results.length > 0) {
+        setShowResults(true);
+        // 자동완성 높이를 최대 5개로 제한
+        const targetHeight = Math.min(results.length * 60, 5 * 60);
+        
+        Animated.parallel([
+          Animated.timing(animatedHeight, {
+            toValue: targetHeight,
+            duration: 200,
+            useNativeDriver: false,
+          }),
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: false,
+          })
+        ]).start();
+      } else {
+        setShowResults(false);
+        animateResultsHide();
+      }
     } else {
       setSearchResults([]);
       setShowResults(false);
@@ -154,7 +177,7 @@ const PlaceSearchBar = forwardRef<PlaceSearchBarRef, PlaceSearchBarProps>(({
   };
 
   const animateResultsShow = () => {
-    const targetHeight = 240;
+    const targetHeight = Math.min(searchResults.length * 60, 5 * 60);
     
     Animated.parallel([
       Animated.timing(animatedHeight, {
@@ -189,9 +212,9 @@ const PlaceSearchBar = forwardRef<PlaceSearchBarRef, PlaceSearchBarProps>(({
     setIsFocused(true);
     onSearchFocus?.();
     
-    if (searchText.trim().length >= 2) {
+    if (searchText.trim().length >= 2 && searchResults.length > 0) {
       setShowResults(true);
-      animateResultsShow();
+      setTimeout(() => animateResultsShow(), 100);
     }
   };
 
@@ -359,12 +382,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
     borderWidth: 1,
     borderColor: '#e0e0e0',
     overflow: 'hidden',
+    position: 'relative',
+    zIndex: 1000,
   },
   resultsList: {
     flex: 1,

@@ -69,3 +69,8 @@ export interface PlacesResponse {
   status: 'OK' | 'ZERO_RESULTS' | 'OVER_QUERY_LIMIT' | 'REQUEST_DENIED' | 'INVALID_REQUEST';
   next_page_token?: string;
 }
+
+export interface SearchOptions {
+  maxResults?: number;
+  pageToken?: string;
+}
