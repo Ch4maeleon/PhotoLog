@@ -46,7 +46,6 @@ export default function HomeScreen() {
   const [airQuality, setAirQuality] = useState<{pm25: number, pm10: number, aqi: number} | null>(null);
   const [showWeatherDetails, setShowWeatherDetails] = useState(false);
   
-  // 장소 관련 상태
   const [places, setPlaces] = useState<Place[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
@@ -57,6 +56,7 @@ export default function HomeScreen() {
   const mapRef = useRef<MapView>(null);
   const hourlyScrollRef = useRef<ScrollView>(null);
   const dailyScrollRef = useRef<ScrollView>(null);
+  const searchBarRef = useRef<any>(null);
   const snapPoints = useMemo(() => ['70%'], []);
 
   const defaultRegion = {
@@ -83,7 +83,6 @@ export default function HomeScreen() {
         `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&appid=${API_KEY}&units=metric&lang=kr`
       );
       
-      // 5일 예보 데이터
       const forecastResponse = await fetch(
         `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lng}&appid=${API_KEY}&units=metric&lang=kr`
       );
@@ -103,7 +102,6 @@ export default function HomeScreen() {
         });
       };
       
-      // 현재 날씨
       setWeather({
         temp: Math.round(currentData.main.temp),
         condition: currentData.weather[0].main
@@ -123,7 +121,6 @@ export default function HomeScreen() {
         description: currentData.weather[0].description
       });
       
-      // 시간대별 예보 (7개, 3시간 간격)
       const hourlyData = forecastData.list.slice(0, 7).map((item: any) => {
         const date = new Date(item.dt * 1000);
         const hour = date.getHours();
@@ -136,7 +133,6 @@ export default function HomeScreen() {
       });
       setHourlyForecast(hourlyData);
       
-      // 일별 예보 (6일) - 날짜/요일 표시
       const dailyData: { [key: string]: { temps: number[], condition: string, date: string } } = {};
       
       forecastData.list.forEach((item: any) => {
@@ -165,7 +161,6 @@ export default function HomeScreen() {
       
       setDailyForecast(dailyForecastData);
       
-      // 대기질 데이터 가져오기 (OpenWeatherMap Air Pollution API)
       try {
         const airResponse = await fetch(
           `https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lng}&appid=${API_KEY}`
@@ -183,11 +178,9 @@ export default function HomeScreen() {
           }
         }
       } catch (airError) {
-        console.log('Air quality fetch failed:', airError);
         setAirQuality(null);
       }
       
-      // 위치 정보 가져오기 (Expo Location)
       try {
         const address = await Location.reverseGeocodeAsync({
           latitude: lat,
@@ -211,12 +204,9 @@ export default function HomeScreen() {
           }
         }
       } catch (geocodeError) {
-        console.log('Reverse geocoding failed:', geocodeError);
-        // 기본값 유지
       }
       
     } catch (error) {
-      console.log('Weather fetch failed:', error);
       setWeather(null);
       setDetailedWeather(null);
       setHourlyForecast([]);
@@ -227,10 +217,8 @@ export default function HomeScreen() {
 
   // 장소 검색 함수
   const loadNearbyPlaces = useCallback(async (lat: number, lng: number, categories: string[] = selectedCategories) => {
-    console.log('loadNearbyPlaces called with categories:', categories);
     
     if (categories.length === 0) {
-      console.log('No categories selected, clearing places');
       setPlaces([]);
       return;
     }
@@ -242,20 +230,15 @@ export default function HomeScreen() {
         categories: categories
       });
       
-      console.log('Places search completed, found:', nearbyPlaces.length);
-      console.log('Selected categories at time of search:', categories);
       setPlaces(nearbyPlaces);
     } catch (error) {
-      console.error('Failed to load places:', error);
       setPlaces([]);
     }
   }, [selectedCategories]);
 
   const resetToHome = useCallback(async () => {
-    // 바텀시트를 즉시 닫기
     bottomSheetRef.current?.close();
     
-    // 상태 초기화
     setShowWeatherDetails(false);
     setActiveTab('hourly');
     setCurrentLocation('Unknown Location');
@@ -263,7 +246,6 @@ export default function HomeScreen() {
     setShowPlaceDetails(false);
     setSelectedPlace(null);
     
-    // 현재 위치로 이동
     if (location) {
       const currentRegion = {
         latitude: location.coords.latitude,
@@ -277,7 +259,6 @@ export default function HomeScreen() {
     }
   }, [location, fetchWeather]);
 
-  // 홈 탭 클릭 시 모든 동작 취소하고 현재 위치로 이동
   useEffect(() => {
     (global as any).homeTabPressed = () => {
       resetToHome();
@@ -293,7 +274,6 @@ export default function HomeScreen() {
       try {
         let { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          console.warn('Permission to access location was denied');
           return;
         }
 
@@ -302,52 +282,35 @@ export default function HomeScreen() {
         fetchWeather(location.coords.latitude, location.coords.longitude);
         loadNearbyPlaces(location.coords.latitude, location.coords.longitude, DEFAULT_CATEGORIES);
       } catch (error) {
-        console.error('Error getting location:', error);
       }
     })();
   }, [fetchWeather, loadNearbyPlaces]);
 
-  // 이전 카테고리 추적용 ref
   const prevCategoriesRef = useRef<string[]>(DEFAULT_CATEGORIES);
   
-  // 카테고리 변경 시 장소 재로드 (스마트 로딩 제어)
   useEffect(() => {
     if (!location) return;
     
     const prevCategories = prevCategoriesRef.current;
     const currentCategories = selectedCategories;
     
-    // 새로운 카테고리가 추가된지 확인
     const addedCategories = currentCategories.filter(cat => !prevCategories.includes(cat));
     const removedCategories = prevCategories.filter(cat => !currentCategories.includes(cat));
     
-    console.log('Category analysis:', {
-      added: addedCategories,
-      removed: removedCategories,
-      hasNewAdditions: addedCategories.length > 0
-    });
-    
     if (currentCategories.length === 0) {
-      // 모든 카테고리 해제
-      console.log('All categories cleared');
       setPlaces([]);
     } else if (addedCategories.length > 0) {
-      // 새로운 카테고리 추가 - API 호출
-      console.log('New categories added, will search:', addedCategories);
       const timeoutId = setTimeout(() => {
         loadNearbyPlaces(location.coords.latitude, location.coords.longitude, currentCategories);
       }, 300);
       
       return () => clearTimeout(timeoutId);
     } else if (removedCategories.length > 0 && addedCategories.length === 0) {
-      // 카테고리 해제만 - 기존 데이터에서 필터링
-      console.log('Only categories removed, filtering existing data');
       setPlaces(prev => prev.filter(place => 
         place.category && currentCategories.includes(place.category.id)
       ));
     }
     
-    // 이전 카테고리 업데이트
     prevCategoriesRef.current = currentCategories;
   }, [selectedCategories, location, loadNearbyPlaces]);
 
@@ -356,13 +319,12 @@ export default function HomeScreen() {
     if (!detailedWeather) return;
     
     setShowWeatherDetails(true);
-    setActiveTab('hourly'); // 항상 시간대별로 시작
+    setActiveTab('hourly');
     bottomSheetRef.current?.snapToIndex(0);
   }, [detailedWeather]);
 
   const handleHandlePress = useCallback(() => {
     if (showWeatherDetails) {
-      // 날씨 정보 표시 시에는 핸들바 클릭으로 바로 닫기
       bottomSheetRef.current?.close();
       return;
     }
@@ -370,68 +332,46 @@ export default function HomeScreen() {
 
   const handleMapPress = useCallback(() => {
     if (showWeatherDetails) {
-      // 날씨 정보가 열린 상태에서 지도 클릭 시 바로 닫기
       bottomSheetRef.current?.close();
     }
     if (showPlaceDetails) {
       setShowPlaceDetails(false);
       setSelectedPlace(null);
     }
+    
+    searchBarRef.current?.blur();
   }, [showWeatherDetails, showPlaceDetails]);
 
-  // 장소 마커 클릭 핸들러
   const handlePlaceMarkerPress = useCallback((place: Place) => {
-    console.log('=== Place marker pressed ===');
-    console.log('Place:', place.name);
-    console.log('Current states:', {
-      showPlaceDetails: showPlaceDetails,
-      selectedPlace: selectedPlace?.name,
-      showWeatherDetails: showWeatherDetails
-    });
-    
-    // 날씨 정보가 열려있으면 닫기
     if (showWeatherDetails) {
-      console.log('Closing weather sheet first');
       bottomSheetRef.current?.close();
     }
     
-    // 기존 장소 상세 정보가 열려있으면 닫기
     if (showPlaceDetails) {
-      console.log('Another place detail is open, closing first');
       setShowPlaceDetails(false);
       setSelectedPlace(null);
       
-      // 짧은 지연 후 새로운 장소 열기
       setTimeout(() => {
-        console.log('Opening new place after delay:', place.name);
         setSelectedPlace(place);
         setShowPlaceDetails(true);
       }, 200);
     } else {
-      // 바로 새로운 장소 열기
-      console.log('Opening place details immediately:', place.name);
       setSelectedPlace(place);
       setShowPlaceDetails(true);
     }
   }, [showWeatherDetails, showPlaceDetails, selectedPlace]);
 
 
-  // 카테고리 변경 핸들러 (단순히 상태만 업데이트)
   const handleCategoriesChange = useCallback((categories: string[]) => {
-    console.log('Categories changed from', selectedCategories.length, 'to', categories.length);
     setSelectedCategories(categories);
   }, [selectedCategories]);
 
-  // 장소 상세정보 닫기
   const handlePlaceDetailClose = useCallback(() => {
-    console.log('Place detail sheet closing');
     setShowPlaceDetails(false);
     setSelectedPlace(null);
   }, []);
 
-  // 검색 결과 선택 핸들러
   const handleSearchResultSelect = useCallback((result: any) => {
-    // 검색된 장소로 지도 이동
     const newRegion = {
       latitude: result.latitude || 37.5665,
       longitude: result.longitude || 126.9780,
@@ -441,7 +381,6 @@ export default function HomeScreen() {
     
     mapRef.current?.animateToRegion(newRegion, 500);
     
-    // 날씨 정보 업데이트
     if (result.latitude && result.longitude) {
       fetchWeather(result.latitude, result.longitude);
       loadNearbyPlaces(result.latitude, result.longitude);
@@ -488,7 +427,7 @@ export default function HomeScreen() {
       if (value <= 35) return { text: '보통', color: '#1a1a1a' };
       if (value <= 75) return { text: '나쁨', color: '#FF3B30' };
       return { text: '매우나쁨', color: '#FF3B30' };
-    } else { // pm10
+    } else {
       if (value <= 30) return { text: '좋음', color: '#007AFF' };
       if (value <= 80) return { text: '보통', color: '#1a1a1a' };
       if (value <= 150) return { text: '나쁨', color: '#FF3B30' };
@@ -500,6 +439,7 @@ export default function HomeScreen() {
     <GestureHandlerRootView style={styles.container}>
       {/* 상단 장소 검색바 */}
       <PlaceSearchBar
+        ref={searchBarRef}
         onSearchResultSelect={handleSearchResultSelect}
         placeholder="장소, 주소를 검색하세요"
       />
@@ -550,17 +490,10 @@ export default function HomeScreen() {
         showsIndoors={false}
         toolbarEnabled={false}
       >
-        {/* 장소 마커들 (선택된 카테고리만 표시) */}
         {(() => {
           const filteredPlaces = places.filter(place => 
             place.category && selectedCategories.includes(place.category.id)
           );
-          console.log('Rendering markers:', {
-            totalPlaces: places.length,
-            selectedCategories: selectedCategories,
-            filteredCount: filteredPlaces.length,
-            filteredPlaces: filteredPlaces.map(p => ({ name: p.name, category: p.category?.name }))
-          });
           
           return filteredPlaces.map((place) => (
             <PlaceMarker
@@ -600,17 +533,14 @@ export default function HomeScreen() {
             <View style={[styles.sheetContent, showWeatherDetails && { paddingBottom: tabBarHeight + 5 }]}>
               {showWeatherDetails ? (
                 <>
-                  {/* 헤더 */}
                   <View style={styles.weatherHeader}>
                     <Text style={styles.locationTitle}>{currentLocation}</Text>
                   </View>
                   
-                  {/* 구분선 */}
                   <View style={styles.headerDivider} />
                   
                   {detailedWeather && (
                     <View>
-                      {/* 메인 날씨 정보 */}
                       <View style={styles.mainWeatherInfo}>
                         <View style={styles.weatherIconContainer}>
                           <Text style={styles.mainWeatherIcon}>{getWeatherIcon(detailedWeather.condition)}</Text>
@@ -639,13 +569,11 @@ export default function HomeScreen() {
                         </View>
                       </View>
                       
-                      {/* 탭 메뉴 */}
                       <View style={styles.tabContainer}>
                         <TouchableOpacity 
                           style={[styles.tab, activeTab === 'hourly' && styles.activeTab]}
                           onPress={() => {
                             setActiveTab('hourly');
-                            // 시간대별로 전환할 때만 리셋
                             setTimeout(() => {
                               hourlyScrollRef.current?.scrollTo({ x: 0, animated: false });
                             }, 0);
@@ -657,7 +585,6 @@ export default function HomeScreen() {
                           style={[styles.tab, activeTab === 'daily' && styles.activeTab]}
                           onPress={() => {
                             setActiveTab('daily');
-                            // 일별로 전환할 때만 리셋
                             setTimeout(() => {
                               dailyScrollRef.current?.scrollTo({ x: 0, animated: false });
                             }, 0);
@@ -667,7 +594,6 @@ export default function HomeScreen() {
                         </TouchableOpacity>
                       </View>
                       
-                      {/* 예보 컨텐츠 */}
                       {activeTab === 'hourly' ? (
                         <ScrollView 
                           ref={hourlyScrollRef}
@@ -704,7 +630,6 @@ export default function HomeScreen() {
                         </ScrollView>
                       )}
                       
-                      {/* 일출/일몰 시간 */}
                       <View style={styles.sunTimesContainer}>
                         <View style={styles.sunTimeItem}>
                           <View style={styles.sunTimeInfo}>
@@ -825,7 +750,6 @@ const styles = StyleSheet.create({
     lineHeight: 10,
     marginLeft: 4,
   },
-  // 카카오맵 스타일 날씨 UI
   weatherHeader: {
     alignItems: 'center',
     paddingBottom: 16,

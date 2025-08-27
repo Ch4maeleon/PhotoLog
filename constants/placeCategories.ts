@@ -76,21 +76,16 @@ export const PLACE_CATEGORIES: PlaceCategory[] = [
 export const DEFAULT_CATEGORIES: string[] = [];
 
 export const getCategoryByType = (types: string[]): PlaceCategory | undefined => {
-  console.log('Finding category for types:', types);
-  
-  // 우선순위가 높은 카테고리 먼저 찾기
   const priorityOrder = ['cafe', 'gas_station', 'convenience_store', 'bank', 'hospital', 'restaurant', 'shopping', 'tourist_attraction', 'park', 'accommodation'];
   
   for (const categoryId of priorityOrder) {
     const category = PLACE_CATEGORIES.find(cat => cat.id === categoryId);
     if (category && types.some(type => category.googleTypes.includes(type))) {
-      console.log('Matched category:', category.name);
       return category;
     }
   }
   
-  console.log('No category matched, using default');
-  return PLACE_CATEGORIES[0]; // 기본으로 음식점 반환
+  return PLACE_CATEGORIES[0];
 };
 
 export const getCategoryById = (id: string): PlaceCategory | undefined => {

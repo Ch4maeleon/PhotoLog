@@ -30,22 +30,15 @@ export default function PlaceDetailSheet({ place, isVisible, onClose }: PlaceDet
   
   const bottomSheetRef = useRef<BottomSheet>(null);
   const tabBarHeight = useBottomTabBarHeight();
-  const snapPoints = ['40%', '80%'];
+  const snapPoints = ['70%'];
 
   useEffect(() => {
-    console.log('=== PlaceDetailSheet useEffect ===');
-    console.log('isVisible:', isVisible);
-    console.log('place:', place?.name || 'null');
-    
     if (isVisible && place) {
-      console.log('>>> Opening place detail sheet for:', place.name);
-      // 약간의 지연을 두어 안정성 향상
       setTimeout(() => {
         bottomSheetRef.current?.snapToIndex(0);
-      }, 100);
+      }, 50);
       loadPlaceDetails();
     } else if (!isVisible) {
-      console.log('>>> Closing place detail sheet');
       bottomSheetRef.current?.close();
     }
   }, [isVisible, place, loadPlaceDetails]);
@@ -58,7 +51,6 @@ export default function PlaceDetailSheet({ place, isVisible, onClose }: PlaceDet
       const details = await placesService.getPlaceDetails(place.place_id);
       setPlaceDetails(details);
     } catch (error) {
-      console.error('Failed to load place details:', error);
     } finally {
       setIsLoading(false);
     }
@@ -72,6 +64,10 @@ export default function PlaceDetailSheet({ place, isVisible, onClose }: PlaceDet
       setSelectedImageIndex(0);
     }, 200);
   };
+
+  const handleHandlePress = useCallback(() => {
+    bottomSheetRef.current?.close();
+  }, []);
 
   const openInMaps = () => {
     if (!place) return;
@@ -107,13 +103,13 @@ export default function PlaceDetailSheet({ place, isVisible, onClose }: PlaceDet
   const renderRatingStars = (rating: number) => {
     const stars = [];
     const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 !== 0;
+    const hasHalfStar = rating % 1 >= 0.5;
     
     for (let i = 0; i < fullStars; i++) {
       stars.push(<Text key={i} style={styles.star}>★</Text>);
     }
     if (hasHalfStar) {
-      stars.push(<Text key="half" style={styles.star}>⭐</Text>);
+      stars.push(<Text key="half" style={styles.star}>★</Text>);
     }
     for (let i = stars.length; i < 5; i++) {
       stars.push(<Text key={i} style={styles.emptyStar}>☆</Text>);
@@ -128,19 +124,25 @@ export default function PlaceDetailSheet({ place, isVisible, onClose }: PlaceDet
   const photos = currentPlace.photos || [];
 
   return (
-    <BottomSheet
-      ref={bottomSheetRef}
-      index={-1}
-      snapPoints={snapPoints}
-      enablePanDownToClose={true}
-      onClose={handleClose}
-      style={{ zIndex: 2000, elevation: 2000 }}
-      handleComponent={() => (
-        <View style={styles.handleContainer}>
-          <View style={styles.handleBar} />
-        </View>
-      )}
-    >
+    <View style={styles.bottomSheetWrapper}>
+      <BottomSheet
+        ref={bottomSheetRef}
+        index={-1}
+        snapPoints={snapPoints}
+        enablePanDownToClose={true}
+        onClose={handleClose}
+        enableDynamicSizing={false}
+        animateOnMount={true}
+        handleComponent={() => (
+          <TouchableOpacity 
+            style={styles.handleContainer}
+            onPress={handleHandlePress}
+            activeOpacity={0.7}
+          >
+            <View style={styles.handleBar} />
+          </TouchableOpacity>
+        )}
+      >
       <BottomSheetView style={styles.container}>
         <ScrollView 
           style={styles.scrollView}
@@ -284,10 +286,21 @@ export default function PlaceDetailSheet({ place, isVisible, onClose }: PlaceDet
         </ScrollView>
       </BottomSheetView>
     </BottomSheet>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  bottomSheetWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 2000,
+    elevation: 2000,
+    pointerEvents: 'box-none',
+  },
   container: {
     flex: 1,
     backgroundColor: 'white',

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import {
   View,
   TextInput,
@@ -28,15 +28,20 @@ interface PlaceSearchBarProps {
   onSearchBlur?: () => void;
   placeholder?: string;
   style?: any;
+  onMapPress?: () => void;
 }
 
-export default function PlaceSearchBar({
+interface PlaceSearchBarRef {
+  blur: () => void;
+}
+
+const PlaceSearchBar = forwardRef<PlaceSearchBarRef, PlaceSearchBarProps>(({
   onSearchResultSelect,
   onSearchFocus,
   onSearchBlur,
   placeholder = "장소를 검색하세요",
   style
-}: PlaceSearchBarProps) {
+}, ref) => {
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isFocused, setIsFocused] = useState(false);
@@ -45,6 +50,16 @@ export default function PlaceSearchBar({
   const inputRef = useRef<TextInput>(null);
   const animatedHeight = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useImperativeHandle(ref, () => ({
+    blur: () => {
+      inputRef.current?.blur();
+      setIsFocused(false);
+      setShowResults(false);
+      animateResultsHide();
+      Keyboard.dismiss();
+    }
+  }));
 
   const searchPlaces = async (query: string): Promise<SearchResult[]> => {
     if (query.length < 2) return [];
@@ -291,7 +306,9 @@ export default function PlaceSearchBar({
       )}
     </View>
   );
-}
+});
+
+export default PlaceSearchBar;
 
 const styles = StyleSheet.create({
   container: {
