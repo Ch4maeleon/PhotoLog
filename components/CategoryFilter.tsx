@@ -34,14 +34,16 @@ export default function CategoryFilter({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {visibleCategories.map((category) => {
+        {visibleCategories.map((category, index) => {
           const isSelected = selectedCategories.includes(category.id);
+          const isLast = index === visibleCategories.length - 1 && (isExpanded || PLACE_CATEGORIES.length <= 6);
           return (
             <TouchableOpacity
               key={category.id}
               style={[
                 styles.categoryChip,
-                isSelected && styles.selectedChip
+                isSelected && styles.selectedChip,
+                isLast && { marginRight: 0 }
               ]}
               onPress={() => toggleCategory(category.id)}
               activeOpacity={0.8}
@@ -58,7 +60,7 @@ export default function CategoryFilter({
         
         {!isExpanded && PLACE_CATEGORIES.length > 6 && (
           <TouchableOpacity
-            style={styles.expandButton}
+            style={[styles.expandButton, { marginRight: 0 }]}
             onPress={() => setIsExpanded(true)}
           >
             <Text style={styles.expandButtonText}>더보기 +</Text>
@@ -83,16 +85,17 @@ export default function CategoryFilter({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 120 : 100,
-    left: 0,
-    right: 0,
+    top: Platform.OS === 'ios' ? 108 : 88,
+    left: 16,
+    right: 16,
     backgroundColor: 'transparent',
     paddingBottom: 6,
     zIndex: 1000,
   },
   scrollContent: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 0,
     paddingVertical: 8,
+    paddingRight: 0,
     gap: 4,
   },
   categoryChip: {
