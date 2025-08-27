@@ -12,6 +12,7 @@ import { placesService } from '@/services/placesService';
 import PlaceMarker from '@/components/PlaceMarker';
 import CategoryFilter from '@/components/CategoryFilter';
 import PlaceDetailSheet from '@/components/PlaceDetailSheet';
+import PlaceSearchBar from '@/components/PlaceSearchBar';
 
 export default function HomeScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
@@ -428,6 +429,25 @@ export default function HomeScreen() {
     setSelectedPlace(null);
   }, []);
 
+  // 검색 결과 선택 핸들러
+  const handleSearchResultSelect = useCallback((result: any) => {
+    // 검색된 장소로 지도 이동
+    const newRegion = {
+      latitude: result.latitude || 37.5665,
+      longitude: result.longitude || 126.9780,
+      latitudeDelta: 0.005,
+      longitudeDelta: 0.005,
+    };
+    
+    mapRef.current?.animateToRegion(newRegion, 500);
+    
+    // 날씨 정보 업데이트
+    if (result.latitude && result.longitude) {
+      fetchWeather(result.latitude, result.longitude);
+      loadNearbyPlaces(result.latitude, result.longitude);
+    }
+  }, [fetchWeather, loadNearbyPlaces]);
+
   const getWeatherIcon = (condition: string) => {
     switch (condition.toLowerCase()) {
       case 'clear': return '☀️';
@@ -478,6 +498,12 @@ export default function HomeScreen() {
 
   return (
     <GestureHandlerRootView style={styles.container}>
+      {/* 상단 장소 검색바 */}
+      <PlaceSearchBar
+        onSearchResultSelect={handleSearchResultSelect}
+        placeholder="장소, 주소를 검색하세요"
+      />
+
       {/* 상단 고정 카테고리 필터 */}
       <CategoryFilter
         selectedCategories={selectedCategories}

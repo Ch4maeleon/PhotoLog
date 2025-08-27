@@ -83,7 +83,7 @@ export default function CategoryFilter({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : 30,
+    top: Platform.OS === 'ios' ? 120 : 100,
     left: 0,
     right: 0,
     backgroundColor: 'transparent',
